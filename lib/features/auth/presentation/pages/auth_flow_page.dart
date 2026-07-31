@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../../finance/presentation/pages/financial_dashboard_page.dart';
+
 class AuthFlowPage extends StatelessWidget {
   const AuthFlowPage({super.key});
 
@@ -18,7 +20,7 @@ class AuthFlowPage extends StatelessWidget {
 
         return snapshot.data == null
             ? const LoginPage()
-            : const DashboardPage();
+            : const FinancialDashboardPage();
       },
     );
   }
@@ -73,7 +75,10 @@ class _LoginPageState extends State<LoginPage> {
 
     try {
       await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-      if (mounted) _show('Instruções enviadas para $email.');
+
+      if (mounted) {
+        _show('Instruções enviadas para $email.');
+      }
     } on FirebaseAuthException catch (error) {
       if (mounted) _show(_messageFor(error));
     }
@@ -134,10 +139,13 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       validator: (value) {
                         final text = value?.trim() ?? '';
+
                         if (text.isEmpty) return 'Informe seu e-mail.';
+
                         if (!text.contains('@')) {
                           return 'Informe um e-mail válido.';
                         }
+
                         return null;
                       },
                     ),
@@ -246,6 +254,8 @@ class _RegisterPageState extends State<RegisterPage> {
 
     setState(() => _loading = true);
 
+    User? createdUser;
+
     try {
       final credential = await FirebaseAuth.instance
           .createUserWithEmailAndPassword(
@@ -253,17 +263,22 @@ class _RegisterPageState extends State<RegisterPage> {
             password: _password.text,
           );
 
-      final user = credential.user!;
+      createdUser = credential.user;
       final name = _name.text.trim();
 
-      await user.updateDisplayName(name);
+      await createdUser?.updateDisplayName(name);
 
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-        'name': name,
-        'email': user.email,
-        'createdAt': FieldValue.serverTimestamp(),
-        'emailVerified': user.emailVerified,
-      });
+      if (createdUser != null) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(createdUser.uid)
+            .set({
+              'name': name,
+              'email': createdUser.email,
+              'createdAt': FieldValue.serverTimestamp(),
+              'emailVerified': createdUser.emailVerified,
+            });
+      }
 
       if (mounted) Navigator.of(context).pop();
     } on FirebaseAuthException catch (error) {
@@ -273,6 +288,10 @@ class _RegisterPageState extends State<RegisterPage> {
         ).showSnackBar(SnackBar(content: Text(_messageFor(error))));
       }
     } on FirebaseException catch (error) {
+      if (createdUser != null) {
+        await createdUser.delete();
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -327,9 +346,11 @@ class _RegisterPageState extends State<RegisterPage> {
                       ),
                       validator: (value) {
                         final text = value?.trim() ?? '';
+
                         if (text.isEmpty || !text.contains('@')) {
                           return 'Informe um e-mail válido.';
                         }
+
                         return null;
                       },
                     ),
@@ -391,70 +412,6 @@ class _RegisterPageState extends State<RegisterPage> {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class DashboardPage extends StatelessWidget {
-  const DashboardPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    final displayName = user?.displayName?.trim();
-    final firstName = displayName == null || displayName.isEmpty
-        ? null
-        : displayName.split(' ').first;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Saúde Financeira Familiar'),
-        actions: [
-          IconButton(
-            tooltip: 'Sair',
-            onPressed: FirebaseAuth.instance.signOut,
-            icon: const Icon(Icons.logout),
-          ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          Text(
-            firstName == null ? 'Bem-vindo(a)!' : 'Olá, $firstName!',
-            style: Theme.of(
-              context,
-            ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 8),
-          Text(user?.email ?? ''),
-          const SizedBox(height: 24),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.verified_user_outlined,
-                    size: 42,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Autenticação concluída',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Login, cadastro, recuperação de senha, sessão persistente e logout estão funcionando.',
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
