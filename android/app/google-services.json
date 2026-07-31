@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "469474103344",
+    "project_id": "saude-financeira-familia-e5ba5",
+    "storage_bucket": "saude-financeira-familia-e5ba5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:469474103344:android:d3b8f54e419726154d1df5",
+        "android_client_info": {
+          "package_name": "com.example.saude_financeira_familiar"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCZ7hsKFaX9y8oiouEyKNE7N4YA3w7wu9U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
