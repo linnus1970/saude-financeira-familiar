@@ -263,6 +263,9 @@ class _OverviewTab extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _CategoryBars(transactions: monthItems),
+
+            const SizedBox(height: 12),
+            _ExpenseCategoryDonutChart(transactions: monthItems),
             const SizedBox(height: 24),
             Text(
               'Metas',
@@ -1479,6 +1482,270 @@ class _ChartLegend extends StatelessWidget {
           ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
         ),
       ],
+    );
+  }
+}
+
+class _ExpenseCategorySlice {
+  const _ExpenseCategorySlice({
+    required this.category,
+    required this.amount,
+    required this.color,
+  });
+
+  final String category;
+  final double amount;
+  final Color color;
+}
+
+List<_ExpenseCategorySlice> _buildExpenseCategorySlices(
+  List<FinancialTransaction> transactions,
+) {
+  final totals = <String, double>{};
+
+  for (final item in transactions.where((item) => !item.isIncome)) {
+    totals[item.category] = (totals[item.category] ?? 0) + item.amount;
+  }
+
+  const palette = [
+    Color(0xFF2563EB),
+    Color(0xFF16A34A),
+    Color(0xFFF97316),
+    Color(0xFF9333EA),
+    Color(0xFFDC2626),
+    Color(0xFF0891B2),
+    Color(0xFFEAB308),
+    Color(0xFFDB2777),
+  ];
+
+  final sorted = totals.entries.toList()
+    ..sort((a, b) => b.value.compareTo(a.value));
+
+  return sorted.asMap().entries.map((entry) {
+    final index = entry.key;
+    final item = entry.value;
+
+    return _ExpenseCategorySlice(
+      category: item.key,
+      amount: item.value,
+      color: palette[index % palette.length],
+    );
+  }).toList();
+}
+
+class _ExpenseCategoryDonutChart extends StatefulWidget {
+  const _ExpenseCategoryDonutChart({required this.transactions});
+
+  final List<FinancialTransaction> transactions;
+
+  @override
+  State<_ExpenseCategoryDonutChart> createState() =>
+      _ExpenseCategoryDonutChartState();
+}
+
+class _ExpenseCategoryDonutChartState
+    extends State<_ExpenseCategoryDonutChart> {
+  int touchedIndex = -1;
+
+  @override
+  Widget build(BuildContext context) {
+    final slices = _buildExpenseCategorySlices(widget.transactions);
+    final total = slices.fold<double>(0, (sum, item) => sum + item.amount);
+
+    if (slices.isEmpty || total <= 0) {
+      return const Card(
+        elevation: 0,
+        child: Padding(
+          padding: EdgeInsets.all(18),
+          child: Row(
+            children: [
+              Icon(Icons.donut_large_outlined),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'O gráfico por categoria aparecerá quando houver despesas no mês.',
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.donut_large_rounded, color: Color(0xFF7C3AED)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Distribuição das despesas',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Veja quais categorias mais pesam no orçamento do mês',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 18),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final compact = constraints.maxWidth < 620;
+
+                final chart = SizedBox(
+                  height: 240,
+                  width: compact ? double.infinity : 300,
+                  child: PieChart(
+                    PieChartData(
+                      centerSpaceRadius: 56,
+                      sectionsSpace: 3,
+                      pieTouchData: PieTouchData(
+                        touchCallback: (event, response) {
+                          setState(() {
+                            if (!event.isInterestedForInteractions ||
+                                response?.touchedSection == null) {
+                              touchedIndex = -1;
+                              return;
+                            }
+                            touchedIndex =
+                                response!.touchedSection!.touchedSectionIndex;
+                          });
+                        },
+                      ),
+                      sections: slices.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final slice = entry.value;
+                        final percentage = (slice.amount / total) * 100;
+                        final active = index == touchedIndex;
+
+                        return PieChartSectionData(
+                          value: slice.amount,
+                          color: slice.color,
+                          radius: active ? 72 : 62,
+                          title: percentage >= 6
+                              ? '${percentage.toStringAsFixed(0)}%'
+                              : '',
+                          titleStyle: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            fontSize: active ? 15 : 13,
+                          ),
+                          badgeWidget: active
+                              ? _DonutValueBadge(
+                                  value: _currency(slice.amount),
+                                  color: slice.color,
+                                )
+                              : null,
+                          badgePositionPercentageOffset: 1.25,
+                        );
+                      }).toList(),
+                    ),
+                    duration: const Duration(milliseconds: 650),
+                    curve: Curves.easeOutCubic,
+                  ),
+                );
+
+                final legend = Column(
+                  children: slices.map((slice) {
+                    final percentage = (slice.amount / total) * 100;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 9),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: slice.color,
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              slice.category,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${percentage.toStringAsFixed(0)}%',
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(_currency(slice.amount)),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                );
+
+                if (compact) {
+                  return Column(
+                    children: [chart, const SizedBox(height: 14), legend],
+                  );
+                }
+
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    chart,
+                    const SizedBox(width: 24),
+                    Expanded(child: legend),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DonutValueBadge extends StatelessWidget {
+  const _DonutValueBadge({required this.value, required this.color});
+
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: const [
+          BoxShadow(
+            blurRadius: 8,
+            offset: Offset(0, 2),
+            color: Color(0x33000000),
+          ),
+        ],
+      ),
+      child: Text(
+        value,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
     );
   }
 }
