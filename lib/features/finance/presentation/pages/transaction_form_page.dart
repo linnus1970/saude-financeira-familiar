@@ -195,6 +195,13 @@ class _TransactionFormPageState extends State<TransactionFormPage> {
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
+                      style: TextStyle(
+                        color: _type == TransactionType.expense
+                            ? const Color(0xFFDC2626)
+                            : const Color(0xFF16A34A),
+                        fontWeight: FontWeight.w800,
+                      ),
+
                       decoration: const InputDecoration(
                         labelText: 'Valor',
                         prefixText: 'R\$ ',

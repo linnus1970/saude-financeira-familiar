@@ -248,6 +248,8 @@ class _OverviewTab extends StatelessWidget {
             const SizedBox(height: 16),
             _ExpenseCategoryComparisonCard(transactions: transactions),
             const SizedBox(height: 16),
+            _FinancialTrendsCard(transactions: transactions),
+            const SizedBox(height: 16),
             _IncomeExpenseBarChart(transactions: transactions),
 
             const SizedBox(height: 12),
@@ -420,7 +422,12 @@ class _TransactionsTabState extends State<_TransactionsTab> {
                             ? transaction.amount
                             : -transaction.amount,
                       ),
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                        color: transaction.isIncome
+                            ? const Color(0xFF16A34A)
+                            : const Color(0xFFDC2626),
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     onTap: () => widget.onOpen(transaction),
                   ),
@@ -1314,6 +1321,232 @@ String _monthShort(int month) {
     'Dez',
   ];
   return labels[month - 1];
+}
+
+class _FinancialTrendsCard extends StatelessWidget {
+  const _FinancialTrendsCard({required this.transactions});
+  final List<FinancialTransaction> transactions;
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final previousDate = DateTime(now.year, now.month - 1, 1);
+    final current = transactions
+        .where((e) => e.date.year == now.year && e.date.month == now.month)
+        .toList();
+    final previous = transactions
+        .where(
+          (e) =>
+              e.date.year == previousDate.year &&
+              e.date.month == previousDate.month,
+        )
+        .toList();
+
+    final currentIncome = _sumIncome(current);
+    final previousIncome = _sumIncome(previous);
+    final currentExpenses = _sumExpenses(current);
+    final previousExpenses = _sumExpenses(previous);
+    final currentBalance = currentIncome - currentExpenses;
+    final previousBalance = previousIncome - previousExpenses;
+
+    final currentCats = <String, double>{};
+    final previousCats = <String, double>{};
+    for (final e in current.where((e) => !e.isIncome)) {
+      currentCats[e.category] = (currentCats[e.category] ?? 0) + e.amount;
+    }
+    for (final e in previous.where((e) => !e.isIncome)) {
+      previousCats[e.category] = (previousCats[e.category] ?? 0) + e.amount;
+    }
+
+    String? increaseCat;
+    double increase = 0;
+    String? reductionCat;
+    double reduction = 0;
+    for (final cat in {...currentCats.keys, ...previousCats.keys}) {
+      final delta = (currentCats[cat] ?? 0) - (previousCats[cat] ?? 0);
+      if (delta > increase) {
+        increase = delta;
+        increaseCat = cat;
+      }
+      if (delta < reduction) {
+        reduction = delta;
+        reductionCat = cat;
+      }
+    }
+
+    final items =
+        <({String title, String message, IconData icon, Color color})>[];
+    void add(String title, String message, IconData icon, Color color) =>
+        items.add((title: title, message: message, icon: icon, color: color));
+
+    final incomeDelta = currentIncome - previousIncome;
+    if (incomeDelta > 0.005) {
+      add(
+        'Receitas cresceram',
+        'As entradas aumentaram ${_currency(incomeDelta)}.',
+        Icons.trending_up_rounded,
+        const Color(0xFF16A34A),
+      );
+    } else if (incomeDelta < -0.005) {
+      add(
+        'Receitas diminuíram',
+        'As entradas caíram ${_currency(incomeDelta.abs())}.',
+        Icons.trending_down_rounded,
+        const Color(0xFFDC2626),
+      );
+    } else {
+      add(
+        'Receitas estáveis',
+        'As receitas permaneceram no mesmo nível.',
+        Icons.horizontal_rule_rounded,
+        const Color(0xFF64748B),
+      );
+    }
+
+    final expenseDelta = currentExpenses - previousExpenses;
+    if (expenseDelta > 0.005) {
+      add(
+        'Despesas aumentaram',
+        'Os gastos cresceram ${_currency(expenseDelta)}.',
+        Icons.north_east_rounded,
+        const Color(0xFFDC2626),
+      );
+    } else if (expenseDelta < -0.005) {
+      add(
+        'Despesas diminuíram',
+        'Os gastos foram reduzidos em ${_currency(expenseDelta.abs())}.',
+        Icons.south_east_rounded,
+        const Color(0xFF16A34A),
+      );
+    } else {
+      add(
+        'Despesas estáveis',
+        'Os gastos permaneceram no mesmo nível.',
+        Icons.horizontal_rule_rounded,
+        const Color(0xFF64748B),
+      );
+    }
+
+    final balanceDelta = currentBalance - previousBalance;
+    if (previousBalance >= 0 && currentBalance < 0) {
+      add(
+        'Saldo virou negativo',
+        'O resultado passou de ${_currency(previousBalance)} para ${_currency(currentBalance)}.',
+        Icons.warning_amber_rounded,
+        const Color(0xFFDC2626),
+      );
+    } else if (previousBalance <= 0 && currentBalance > 0) {
+      add(
+        'Saldo virou positivo',
+        'O resultado passou de ${_currency(previousBalance)} para ${_currency(currentBalance)}.',
+        Icons.check_circle_outline_rounded,
+        const Color(0xFF16A34A),
+      );
+    } else if (balanceDelta > 0.005) {
+      add(
+        'Saldo melhorou',
+        'O resultado mensal melhorou ${_currency(balanceDelta)}.',
+        Icons.account_balance_wallet_outlined,
+        const Color(0xFF16A34A),
+      );
+    } else if (balanceDelta < -0.005) {
+      add(
+        'Saldo piorou',
+        'O resultado mensal caiu ${_currency(balanceDelta.abs())}.',
+        Icons.account_balance_wallet_outlined,
+        const Color(0xFFDC2626),
+      );
+    }
+
+    if (increaseCat != null) {
+      add(
+        'Maior pressão no orçamento',
+        '$increaseCat aumentou ${_currency(increase)}.',
+        Icons.priority_high_rounded,
+        const Color(0xFFF59E0B),
+      );
+    }
+    if (reductionCat != null) {
+      add(
+        'Maior redução de gastos',
+        '$reductionCat caiu ${_currency(reduction.abs())}.',
+        Icons.savings_outlined,
+        const Color(0xFF16A34A),
+      );
+    }
+
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.auto_graph_rounded, color: Color(0xFF0F766E)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Tendências e destaques',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Text(
+              'Leitura automática das principais mudanças em relação ao mês anterior',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 14),
+            ...items.map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(13),
+                  decoration: BoxDecoration(
+                    color: item.color.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(item.icon, color: item.color, size: 21),
+                      const SizedBox(width: 11),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.title,
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    color: item.color,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              item.message,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _ExpenseCategoryComparisonCard extends StatelessWidget {
@@ -3280,7 +3513,13 @@ class _CategoryBars extends StatelessWidget {
                   Row(
                     children: [
                       Expanded(child: Text(entry.key)),
-                      Text(_currency(entry.value)),
+                      Text(
+                        _currency(entry.value),
+                        style: const TextStyle(
+                          color: Color(0xFFDC2626), // expense-category-value
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 6),
