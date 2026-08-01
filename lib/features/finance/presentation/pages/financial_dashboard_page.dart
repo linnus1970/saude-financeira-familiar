@@ -200,6 +200,13 @@ class _OverviewTab extends StatelessWidget {
           monthIncome: monthIncome,
           monthExpenses: monthExpenses,
         );
+
+        final score = _buildFinancialScore(
+          monthIncome: monthIncome,
+          monthExpenses: monthExpenses,
+          savingsRate: savingsRate,
+          forecast: forecast,
+        );
         return ListView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
           children: [
@@ -241,6 +248,9 @@ class _OverviewTab extends StatelessWidget {
 
             const SizedBox(height: 12),
             _MonthlyForecastCard(forecast: forecast),
+
+            const SizedBox(height: 12),
+            _FinancialScoreCard(score: score),
             const SizedBox(height: 24),
             Text(
               'Despesas por categoria',
@@ -965,6 +975,254 @@ class _ForecastMetric extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _FinancialScore {
+  const _FinancialScore({
+    required this.value,
+    required this.label,
+    required this.message,
+    required this.level,
+    required this.savingsPoints,
+    required this.commitmentPoints,
+    required this.forecastPoints,
+  });
+
+  final int value;
+  final String label;
+  final String message;
+  final _FinancialHealthLevel level;
+  final int savingsPoints;
+  final int commitmentPoints;
+  final int forecastPoints;
+}
+
+_FinancialScore _buildFinancialScore({
+  required double monthIncome,
+  required double monthExpenses,
+  required double savingsRate,
+  required _MonthlyForecast forecast,
+}) {
+  final commitmentRate = monthIncome <= 0
+      ? (monthExpenses > 0 ? 100.0 : 0.0)
+      : (monthExpenses / monthIncome) * 100;
+
+  final savingsPoints = monthIncome <= 0
+      ? 0
+      : savingsRate >= 20
+      ? 40
+      : savingsRate >= 10
+      ? 30
+      : savingsRate >= 0
+      ? 15
+      : 0;
+
+  final commitmentPoints = monthIncome <= 0
+      ? 0
+      : commitmentRate <= 70
+      ? 35
+      : commitmentRate <= 90
+      ? 25
+      : commitmentRate <= 100
+      ? 10
+      : 0;
+
+  final forecastPoints = forecast.projectedBalance > 0
+      ? 25
+      : forecast.projectedBalance == 0
+      ? 15
+      : 0;
+
+  final rawScore = savingsPoints + commitmentPoints + forecastPoints;
+  final value = rawScore.clamp(0, 100);
+
+  if (value >= 80) {
+    return _FinancialScore(
+      value: value,
+      label: 'Excelente',
+      message:
+          'Sua estrutura financeira está equilibrada. Continue preservando margem, orçamento e metas.',
+      level: _FinancialHealthLevel.healthy,
+      savingsPoints: savingsPoints,
+      commitmentPoints: commitmentPoints,
+      forecastPoints: forecastPoints,
+    );
+  }
+
+  if (value >= 60) {
+    return _FinancialScore(
+      value: value,
+      label: 'Estável',
+      message:
+          'Sua situação está sob controle, mas ainda há espaço para melhorar a economia e reduzir o comprometimento.',
+      level: _FinancialHealthLevel.stable,
+      savingsPoints: savingsPoints,
+      commitmentPoints: commitmentPoints,
+      forecastPoints: forecastPoints,
+    );
+  }
+
+  if (value >= 35) {
+    return _FinancialScore(
+      value: value,
+      label: 'Atenção',
+      message:
+          'Alguns indicadores precisam de ajuste. Priorize margem positiva e controle das despesas.',
+      level: _FinancialHealthLevel.attention,
+      savingsPoints: savingsPoints,
+      commitmentPoints: commitmentPoints,
+      forecastPoints: forecastPoints,
+    );
+  }
+
+  return _FinancialScore(
+    value: value,
+    label: 'Crítica',
+    message:
+        'Os indicadores atuais mostram risco financeiro. Revise receitas, gastos e orçamento com prioridade.',
+    level: _FinancialHealthLevel.critical,
+    savingsPoints: savingsPoints,
+    commitmentPoints: commitmentPoints,
+    forecastPoints: forecastPoints,
+  );
+}
+
+class _FinancialScoreCard extends StatelessWidget {
+  const _FinancialScoreCard({required this.score});
+
+  final _FinancialScore score;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final accent = switch (score.level) {
+      _FinancialHealthLevel.healthy => scheme.primary,
+      _FinancialHealthLevel.stable => scheme.secondary,
+      _FinancialHealthLevel.attention => scheme.tertiary,
+      _FinancialHealthLevel.critical => scheme.error,
+    };
+
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.speed_outlined, color: accent),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Pontuação de saúde financeira',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 84,
+                  height: 84,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      CircularProgressIndicator(
+                        value: score.value / 100,
+                        strokeWidth: 10,
+                        color: accent,
+                        backgroundColor: accent.withValues(alpha: 0.12),
+                      ),
+                      Text(
+                        '${score.value}',
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              color: accent,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        score.label,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          color: accent,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(score.message),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              children: [
+                _ScoreChip(
+                  label: 'Economia',
+                  points: score.savingsPoints,
+                  maxPoints: 40,
+                ),
+                _ScoreChip(
+                  label: 'Comprometimento',
+                  points: score.commitmentPoints,
+                  maxPoints: 35,
+                ),
+                _ScoreChip(
+                  label: 'Previsão',
+                  points: score.forecastPoints,
+                  maxPoints: 25,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ScoreChip extends StatelessWidget {
+  const _ScoreChip({
+    required this.label,
+    required this.points,
+    required this.maxPoints,
+  });
+
+  final String label;
+  final int points;
+  final int maxPoints;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        '$label: $points/$maxPoints',
+        style: const TextStyle(fontWeight: FontWeight.w700),
       ),
     );
   }
