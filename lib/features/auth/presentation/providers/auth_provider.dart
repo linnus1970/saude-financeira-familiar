@@ -1,6 +1,2 @@
-final authControllerProvider =
-    StateNotifierProvider<AuthController, AuthState>((ref) {
-  final repository = ref.watch(authRepositoryProvider);
-
-  return AuthController(repository);
-});
+// O provider de autenticação será configurado
+// na próxima etapa da Sprint 1.

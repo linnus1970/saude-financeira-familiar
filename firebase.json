@@ -1,0 +1,28 @@
+﻿{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "saude-financeira-familia-e5ba5",
+          "appId": "1:469474103344:android:d3b8f54e419726154d1df5",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "saude-financeira-familia-e5ba5",
+          "configurations": {
+            "android": "1:469474103344:android:d3b8f54e419726154d1df5",
+            "ios": "1:469474103344:ios:65ee403adbdcd7714d1df5",
+            "macos": "1:469474103344:ios:65ee403adbdcd7714d1df5",
+            "web": "1:469474103344:web:c487d8a42d38a8254d1df5",
+            "windows": "1:469474103344:web:a5b8f647f3979ed14d1df5"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}
