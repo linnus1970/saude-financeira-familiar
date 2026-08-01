@@ -244,6 +244,8 @@ class _OverviewTab extends StatelessWidget {
             const SizedBox(height: 16),
             _MonthComparisonCard(transactions: transactions),
             const SizedBox(height: 16),
+            _MonthlyConsolidatedReportCard(transactions: monthItems),
+            const SizedBox(height: 16),
             _IncomeExpenseBarChart(transactions: transactions),
 
             const SizedBox(height: 12),
@@ -1310,6 +1312,233 @@ String _monthShort(int month) {
     'Dez',
   ];
   return labels[month - 1];
+}
+
+class _MonthlyConsolidatedReportCard extends StatelessWidget {
+  const _MonthlyConsolidatedReportCard({required this.transactions});
+
+  final List<FinancialTransaction> transactions;
+
+  @override
+  Widget build(BuildContext context) {
+    final income = _sumIncome(transactions);
+    final expenses = _sumExpenses(transactions);
+    final balance = income - expenses;
+    final savingsRate = income <= 0
+        ? 0.0
+        : ((income - expenses) / income) * 100;
+
+    final expenseTotals = <String, double>{};
+    for (final item in transactions.where((item) => !item.isIncome)) {
+      expenseTotals[item.category] =
+          (expenseTotals[item.category] ?? 0) + item.amount;
+    }
+
+    MapEntry<String, double>? topCategory;
+    for (final entry in expenseTotals.entries) {
+      if (topCategory == null || entry.value > topCategory.value) {
+        topCategory = entry;
+      }
+    }
+
+    final hasIncome = income > 0;
+    final positive = balance >= 0 && hasIncome;
+
+    final Color statusColor;
+    final IconData statusIcon;
+    final String statusTitle;
+    final String statusMessage;
+
+    if (!hasIncome && expenses > 0) {
+      statusColor = const Color(0xFFDC2626);
+      statusIcon = Icons.warning_amber_rounded;
+      statusTitle = 'Resultado deficitário';
+      statusMessage =
+          'Há despesas registradas no mês, mas nenhuma receita. Atualize as entradas para ter uma visão completa.';
+    } else if (positive && savingsRate >= 20) {
+      statusColor = const Color(0xFF16A34A);
+      statusIcon = Icons.check_circle_outline_rounded;
+      statusTitle = 'Mês positivo';
+      statusMessage =
+          'As receitas cobriram as despesas e a taxa de economia está em um nível saudável.';
+    } else if (positive) {
+      statusColor = const Color(0xFFF59E0B);
+      statusIcon = Icons.info_outline_rounded;
+      statusTitle = 'Atenção aos gastos';
+      statusMessage =
+          'O mês está positivo, mas há espaço para aumentar a parcela da renda que sobra após as despesas.';
+    } else {
+      statusColor = const Color(0xFFDC2626);
+      statusIcon = Icons.trending_down_rounded;
+      statusTitle = 'Resultado deficitário';
+      statusMessage =
+          'As despesas superaram as receitas do mês. Revise os maiores gastos e priorize o equilíbrio do orçamento.';
+    }
+
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.summarize_outlined, color: Color(0xFF2563EB)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Relatório mensal consolidado',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Text(
+              'Resumo dos principais indicadores financeiros do mês',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _MonthlyReportMetric(
+                  label: 'Receitas',
+                  value: _currency(income),
+                  icon: Icons.trending_up_rounded,
+                ),
+                _MonthlyReportMetric(
+                  label: 'Despesas',
+                  value: _currency(expenses),
+                  icon: Icons.trending_down_rounded,
+                ),
+                _MonthlyReportMetric(
+                  label: 'Saldo do mês',
+                  value: _currency(balance),
+                  icon: Icons.account_balance_wallet_outlined,
+                ),
+                _MonthlyReportMetric(
+                  label: 'Taxa de economia',
+                  value: hasIncome ? '${savingsRate.toStringAsFixed(1)}%' : '—',
+                  icon: Icons.savings_outlined,
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(13),
+              decoration: BoxDecoration(
+                color: const Color(0xFF64748B).withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.category_outlined, size: 20),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      topCategory == null
+                          ? 'Maior categoria de gastos: nenhuma despesa registrada'
+                          : 'Maior categoria de gastos: ${topCategory.key} (${_currency(topCategory.value)})',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(statusIcon, color: statusColor, size: 22),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          statusTitle,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: statusColor,
+                                fontWeight: FontWeight.w800,
+                              ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          statusMessage,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MonthlyReportMetric extends StatelessWidget {
+  const _MonthlyReportMetric({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 225,
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2563EB).withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: const Color(0xFF2563EB)),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: Theme.of(context).textTheme.bodySmall),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _MonthComparisonData {
