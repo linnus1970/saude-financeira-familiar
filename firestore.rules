@@ -11,6 +11,16 @@ service cloud.firestore {
         allow read, create, update, delete: if request.auth != null
           && request.auth.uid == userId;
       }
+
+      match /goals/{goalId} {
+        allow read, create, update, delete: if request.auth != null
+          && request.auth.uid == userId;
+      }
+
+      match /budgets/{budgetId} {
+        allow read, create, update, delete: if request.auth != null
+          && request.auth.uid == userId;
+      }
     }
   }
 }
