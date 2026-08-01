@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../../../planning/data/planning_repository.dart';
@@ -240,6 +241,8 @@ class _OverviewTab extends StatelessWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 16),
+            _IncomeExpenseBarChart(transactions: transactions),
             const SizedBox(height: 16),
             _FinancialDiagnosisCard(diagnosis: diagnosis),
 
@@ -1224,6 +1227,258 @@ class _ScoreChip extends StatelessWidget {
         '$label: $points/$maxPoints',
         style: const TextStyle(fontWeight: FontWeight.w700),
       ),
+    );
+  }
+}
+
+class _MonthlyChartPoint {
+  const _MonthlyChartPoint({
+    required this.year,
+    required this.month,
+    required this.income,
+    required this.expenses,
+  });
+
+  final int year;
+  final int month;
+  final double income;
+  final double expenses;
+
+  String get label => _monthShort(month);
+}
+
+List<_MonthlyChartPoint> _buildMonthlyChartData(
+  List<FinancialTransaction> transactions,
+) {
+  final now = DateTime.now();
+  final points = <_MonthlyChartPoint>[];
+
+  for (var offset = 5; offset >= 0; offset--) {
+    final date = DateTime(now.year, now.month - offset, 1);
+    final items = transactions.where(
+      (item) => item.date.year == date.year && item.date.month == date.month,
+    );
+
+    var income = 0.0;
+    var expenses = 0.0;
+
+    for (final item in items) {
+      if (item.isIncome) {
+        income += item.amount;
+      } else {
+        expenses += item.amount;
+      }
+    }
+
+    points.add(
+      _MonthlyChartPoint(
+        year: date.year,
+        month: date.month,
+        income: income,
+        expenses: expenses,
+      ),
+    );
+  }
+
+  return points;
+}
+
+String _monthShort(int month) {
+  const labels = [
+    'Jan',
+    'Fev',
+    'Mar',
+    'Abr',
+    'Mai',
+    'Jun',
+    'Jul',
+    'Ago',
+    'Set',
+    'Out',
+    'Nov',
+    'Dez',
+  ];
+  return labels[month - 1];
+}
+
+class _IncomeExpenseBarChart extends StatelessWidget {
+  const _IncomeExpenseBarChart({required this.transactions});
+
+  final List<FinancialTransaction> transactions;
+
+  @override
+  Widget build(BuildContext context) {
+    final points = _buildMonthlyChartData(transactions);
+    final maxValue = points.fold<double>(
+      0,
+      (current, item) =>
+          [current, item.income, item.expenses].reduce((a, b) => a > b ? a : b),
+    );
+    final chartMax = maxValue <= 0 ? 100.0 : maxValue * 1.22;
+
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.bar_chart_rounded, color: Color(0xFF2563EB)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Receitas x despesas',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                const _ChartLegend(color: Color(0xFF16A34A), label: 'Receitas'),
+                const SizedBox(width: 10),
+                const _ChartLegend(color: Color(0xFFF97316), label: 'Despesas'),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Comparativo colorido dos últimos 6 meses',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              height: 250,
+              child: BarChart(
+                BarChartData(
+                  maxY: chartMax,
+                  alignment: BarChartAlignment.spaceAround,
+                  groupsSpace: 18,
+                  borderData: FlBorderData(show: false),
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    horizontalInterval: chartMax / 4,
+                    getDrawingHorizontalLine: (value) => FlLine(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.outlineVariant.withValues(alpha: 0.45),
+                      strokeWidth: 1,
+                    ),
+                  ),
+                  titlesData: FlTitlesData(
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    leftTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 32,
+                        getTitlesWidget: (value, meta) {
+                          final index = value.toInt();
+                          if (index < 0 || index >= points.length) {
+                            return const SizedBox.shrink();
+                          }
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              points[index].label,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  barTouchData: BarTouchData(
+                    enabled: true,
+                    touchTooltipData: BarTouchTooltipData(
+                      getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                        final type = rodIndex == 0 ? 'Receitas' : 'Despesas';
+                        return BarTooltipItem(
+                          '$type\n${_currency(rod.toY)}',
+                          const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  barGroups: points.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final item = entry.value;
+
+                    return BarChartGroupData(
+                      x: index,
+                      barsSpace: 5,
+                      barRods: [
+                        BarChartRodData(
+                          toY: item.income,
+                          width: 13,
+                          color: const Color(0xFF16A34A),
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(6),
+                          ),
+                        ),
+                        BarChartRodData(
+                          toY: item.expenses,
+                          width: 13,
+                          color: const Color(0xFFF97316),
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(6),
+                          ),
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                ),
+                duration: const Duration(milliseconds: 650),
+                curve: Curves.easeOutCubic,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ChartLegend extends StatelessWidget {
+  const _ChartLegend({required this.color, required this.label});
+
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ),
+        const SizedBox(width: 5),
+        Text(
+          label,
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+        ),
+      ],
     );
   }
 }
