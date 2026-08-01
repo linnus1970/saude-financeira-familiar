@@ -182,6 +182,11 @@ class _OverviewTab extends StatelessWidget {
             ? 0.0
             : ((monthIncome - monthExpenses) / monthIncome) * 100;
 
+        final diagnosis = _buildFinancialDiagnosis(
+          monthIncome: monthIncome,
+          monthExpenses: monthExpenses,
+          savingsRate: savingsRate,
+        );
         return ListView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
           children: [
@@ -215,6 +220,9 @@ class _OverviewTab extends StatelessWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 16),
+            _FinancialDiagnosisCard(diagnosis: diagnosis),
+
             const SizedBox(height: 24),
             Text(
               'Despesas por categoria',
@@ -597,6 +605,208 @@ class _PlanningTab extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+class _FinancialDiagnosis {
+  const _FinancialDiagnosis({
+    required this.title,
+    required this.message,
+    required this.icon,
+    required this.commitmentRate,
+    required this.monthMargin,
+    required this.level,
+  });
+
+  final String title;
+  final String message;
+  final IconData icon;
+  final double commitmentRate;
+  final double monthMargin;
+  final _FinancialHealthLevel level;
+}
+
+enum _FinancialHealthLevel { healthy, stable, attention, critical }
+
+_FinancialDiagnosis _buildFinancialDiagnosis({
+  required double monthIncome,
+  required double monthExpenses,
+  required double savingsRate,
+}) {
+  final monthMargin = monthIncome - monthExpenses;
+  final commitmentRate = monthIncome <= 0
+      ? (monthExpenses > 0 ? 100.0 : 0.0)
+      : (monthExpenses / monthIncome) * 100;
+
+  if (monthIncome == 0 && monthExpenses == 0) {
+    return const _FinancialDiagnosis(
+      title: 'Mês começando',
+      message:
+          'Ainda não há movimentações neste mês. Registre receitas e despesas para gerar um diagnóstico.',
+      icon: Icons.insights_outlined,
+      commitmentRate: 0,
+      monthMargin: 0,
+      level: _FinancialHealthLevel.stable,
+    );
+  }
+
+  if (monthIncome <= 0 && monthExpenses > 0) {
+    return _FinancialDiagnosis(
+      title: 'Atenção às receitas',
+      message:
+          'Existem despesas no mês, mas nenhuma receita registrada. Confira se as entradas estão atualizadas.',
+      icon: Icons.warning_amber_rounded,
+      commitmentRate: commitmentRate,
+      monthMargin: monthMargin,
+      level: _FinancialHealthLevel.attention,
+    );
+  }
+
+  if (monthExpenses > monthIncome) {
+    return _FinancialDiagnosis(
+      title: 'Situação crítica',
+      message:
+          'As despesas do mês já ultrapassaram as receitas. Priorize gastos essenciais e revise os limites do orçamento.',
+      icon: Icons.error_outline,
+      commitmentRate: commitmentRate,
+      monthMargin: monthMargin,
+      level: _FinancialHealthLevel.critical,
+    );
+  }
+
+  if (savingsRate >= 20) {
+    return _FinancialDiagnosis(
+      title: 'Saúde financeira boa',
+      message:
+          'Você está preservando pelo menos 20% das receitas do mês. Mantenha o ritmo e direcione parte da sobra para suas metas.',
+      icon: Icons.verified_outlined,
+      commitmentRate: commitmentRate,
+      monthMargin: monthMargin,
+      level: _FinancialHealthLevel.healthy,
+    );
+  }
+
+  if (savingsRate >= 10) {
+    return _FinancialDiagnosis(
+      title: 'Situação estável',
+      message:
+          'O mês está positivo, mas ainda há espaço para aumentar a margem de segurança e acelerar suas metas.',
+      icon: Icons.trending_up,
+      commitmentRate: commitmentRate,
+      monthMargin: monthMargin,
+      level: _FinancialHealthLevel.stable,
+    );
+  }
+
+  return _FinancialDiagnosis(
+    title: 'Atenção ao orçamento',
+    message:
+        'A margem do mês está pequena. Revise as categorias com maior gasto para evitar terminar o mês no negativo.',
+    icon: Icons.monitor_heart_outlined,
+    commitmentRate: commitmentRate,
+    monthMargin: monthMargin,
+    level: _FinancialHealthLevel.attention,
+  );
+}
+
+class _FinancialDiagnosisCard extends StatelessWidget {
+  const _FinancialDiagnosisCard({required this.diagnosis});
+
+  final _FinancialDiagnosis diagnosis;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final accent = switch (diagnosis.level) {
+      _FinancialHealthLevel.healthy => colorScheme.primary,
+      _FinancialHealthLevel.stable => colorScheme.secondary,
+      _FinancialHealthLevel.attention => colorScheme.tertiary,
+      _FinancialHealthLevel.critical => colorScheme.error,
+    };
+
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: accent.withValues(alpha: 0.12),
+                  foregroundColor: accent,
+                  child: Icon(diagnosis.icon),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Diagnóstico financeiro',
+                        style: Theme.of(context).textTheme.labelLarge,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        diagnosis.title,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              color: accent,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text(diagnosis.message),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                _DiagnosticChip(
+                  icon: Icons.pie_chart_outline,
+                  label:
+                      'Comprometimento: ${diagnosis.commitmentRate.toStringAsFixed(0)}%',
+                ),
+                _DiagnosticChip(
+                  icon: diagnosis.monthMargin >= 0
+                      ? Icons.savings_outlined
+                      : Icons.trending_down,
+                  label: 'Margem: ${_currency(diagnosis.monthMargin)}',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DiagnosticChip extends StatelessWidget {
+  const _DiagnosticChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [Icon(icon, size: 18), const SizedBox(width: 6), Text(label)],
+      ),
     );
   }
 }
