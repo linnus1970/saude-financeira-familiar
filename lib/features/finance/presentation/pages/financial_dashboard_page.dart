@@ -478,9 +478,12 @@ class _PlanningTab extends StatelessWidget {
                               item.date.year == budget.year,
                         )
                         .fold<double>(0, (sum, item) => sum + item.amount);
-                    final progress = budget.limit <= 0
+                    final ratio = budget.limit <= 0
                         ? 0.0
-                        : (spent / budget.limit).clamp(0.0, 1.0);
+                        : spent / budget.limit;
+                    final progress = ratio.clamp(0.0, 1.0);
+                    final exceeded = spent > budget.limit;
+                    final excess = exceeded ? spent - budget.limit : 0.0;
 
                     return Card(
                       child: ListTile(
@@ -492,8 +495,18 @@ class _PlanningTab extends StatelessWidget {
                             LinearProgressIndicator(value: progress),
                             const SizedBox(height: 4),
                             Text(
-                              '${_currency(spent)} de ${_currency(budget.limit)}',
+                              '${_currency(spent)} de ${_currency(budget.limit)} (${(ratio * 100).round()}%)',
                             ),
+                            if (exceeded) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                'Orçamento excedido em ${_currency(excess)}',
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.error,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                         trailing: IconButton(
