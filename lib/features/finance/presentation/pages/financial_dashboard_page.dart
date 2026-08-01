@@ -242,6 +242,8 @@ class _OverviewTab extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
+            _MonthComparisonCard(transactions: transactions),
+            const SizedBox(height: 16),
             _IncomeExpenseBarChart(transactions: transactions),
 
             const SizedBox(height: 12),
@@ -1308,6 +1310,259 @@ String _monthShort(int month) {
     'Dez',
   ];
   return labels[month - 1];
+}
+
+class _MonthComparisonData {
+  const _MonthComparisonData({
+    required this.currentIncome,
+    required this.previousIncome,
+    required this.currentExpenses,
+    required this.previousExpenses,
+  });
+
+  final double currentIncome;
+  final double previousIncome;
+  final double currentExpenses;
+  final double previousExpenses;
+
+  double get currentBalance => currentIncome - currentExpenses;
+  double get previousBalance => previousIncome - previousExpenses;
+}
+
+_MonthComparisonData _buildMonthComparisonData(
+  List<FinancialTransaction> transactions,
+) {
+  final now = DateTime.now();
+  final previousDate = DateTime(now.year, now.month - 1, 1);
+
+  final currentItems = transactions.where(
+    (item) => item.date.year == now.year && item.date.month == now.month,
+  );
+  final previousItems = transactions.where(
+    (item) =>
+        item.date.year == previousDate.year &&
+        item.date.month == previousDate.month,
+  );
+
+  double income(Iterable<FinancialTransaction> items) => items
+      .where((item) => item.isIncome)
+      .fold<double>(0, (sum, item) => sum + item.amount);
+
+  double expenses(Iterable<FinancialTransaction> items) => items
+      .where((item) => !item.isIncome)
+      .fold<double>(0, (sum, item) => sum + item.amount);
+
+  return _MonthComparisonData(
+    currentIncome: income(currentItems),
+    previousIncome: income(previousItems),
+    currentExpenses: expenses(currentItems),
+    previousExpenses: expenses(previousItems),
+  );
+}
+
+double? _comparisonPercent(double current, double previous) {
+  if (previous == 0) return current == 0 ? 0 : null;
+  return ((current - previous) / previous.abs()) * 100;
+}
+
+class _MonthComparisonCard extends StatelessWidget {
+  const _MonthComparisonCard({required this.transactions});
+
+  final List<FinancialTransaction> transactions;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = _buildMonthComparisonData(transactions);
+    final now = DateTime.now();
+    final previousDate = DateTime(now.year, now.month - 1, 1);
+    final currentLabel = _monthShort(now.month);
+    final previousLabel = _monthShort(previousDate.month);
+
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.compare_arrows_rounded,
+                  color: Color(0xFF7C3AED),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Comparativo mensal',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Text(
+              '$currentLabel x $previousLabel — veja como suas finanças mudaram de um mês para o outro',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 16),
+            _MonthComparisonRow(
+              title: 'Receitas',
+              icon: Icons.trending_up_rounded,
+              current: data.currentIncome,
+              previous: data.previousIncome,
+              higherIsBetter: true,
+            ),
+            const Divider(height: 24),
+            _MonthComparisonRow(
+              title: 'Despesas',
+              icon: Icons.trending_down_rounded,
+              current: data.currentExpenses,
+              previous: data.previousExpenses,
+              higherIsBetter: false,
+            ),
+            const Divider(height: 24),
+            _MonthComparisonRow(
+              title: 'Saldo mensal',
+              icon: Icons.account_balance_wallet_outlined,
+              current: data.currentBalance,
+              previous: data.previousBalance,
+              higherIsBetter: true,
+              describeSignChange: true,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MonthComparisonRow extends StatelessWidget {
+  const _MonthComparisonRow({
+    required this.title,
+    required this.icon,
+    required this.current,
+    required this.previous,
+    required this.higherIsBetter,
+    this.describeSignChange = false,
+  });
+
+  final String title;
+  final IconData icon;
+  final double current;
+  final double previous;
+  final bool higherIsBetter;
+  final bool describeSignChange;
+
+  @override
+  Widget build(BuildContext context) {
+    final percent = _comparisonPercent(current, previous);
+    final delta = current - previous;
+    final unchanged = delta.abs() < 0.005;
+    final improved = unchanged
+        ? null
+        : higherIsBetter
+        ? delta > 0
+        : delta < 0;
+
+    final accent = unchanged
+        ? const Color(0xFF64748B)
+        : improved!
+        ? const Color(0xFF16A34A)
+        : const Color(0xFFDC2626);
+
+    final crossedToNegative =
+        describeSignChange && previous >= 0 && current < 0;
+    final crossedToPositive =
+        describeSignChange && previous <= 0 && current > 0;
+
+    final changeText = crossedToNegative
+        ? 'Virou negativo'
+        : crossedToPositive
+        ? 'Virou positivo'
+        : percent == null
+        ? 'Sem base no mês anterior'
+        : unchanged
+        ? 'Sem alteração'
+        : '${delta > 0 ? '+' : ''}${percent.toStringAsFixed(1)}%';
+
+    final changeIcon = crossedToNegative
+        ? Icons.trending_down_rounded
+        : crossedToPositive
+        ? Icons.trending_up_rounded
+        : unchanged
+        ? Icons.remove_rounded
+        : delta > 0
+        ? Icons.arrow_upward_rounded
+        : Icons.arrow_downward_rounded;
+
+    return Row(
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: accent, size: 21),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 3),
+              Wrap(
+                spacing: 10,
+                runSpacing: 4,
+                children: [
+                  Text(
+                    'Atual: ${_currency(current)}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  Text(
+                    'Anterior: ${_currency(previous)}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(changeIcon, size: 15, color: accent),
+              const SizedBox(width: 3),
+              Text(
+                changeText,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: accent,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _IncomeExpenseBarChart extends StatelessWidget {
