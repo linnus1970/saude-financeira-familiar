@@ -194,6 +194,12 @@ class _OverviewTab extends StatelessWidget {
           savingsRate: savingsRate,
           transactions: monthItems,
         );
+
+        final forecast = _buildMonthlyForecast(
+          now: now,
+          monthIncome: monthIncome,
+          monthExpenses: monthExpenses,
+        );
         return ListView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
           children: [
@@ -232,6 +238,9 @@ class _OverviewTab extends StatelessWidget {
 
             const SizedBox(height: 12),
             _FinancialRecommendationsCard(recommendations: recommendations),
+
+            const SizedBox(height: 12),
+            _MonthlyForecastCard(forecast: forecast),
             const SizedBox(height: 24),
             Text(
               'Despesas por categoria',
@@ -781,6 +790,181 @@ class _FinancialRecommendationsCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _MonthlyForecast {
+  const _MonthlyForecast({
+    required this.averageDailyExpense,
+    required this.projectedExpenses,
+    required this.projectedBalance,
+    required this.daysElapsed,
+    required this.daysInMonth,
+  });
+
+  final double averageDailyExpense;
+  final double projectedExpenses;
+  final double projectedBalance;
+  final int daysElapsed;
+  final int daysInMonth;
+}
+
+_MonthlyForecast _buildMonthlyForecast({
+  required DateTime now,
+  required double monthIncome,
+  required double monthExpenses,
+}) {
+  final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+  final daysElapsed = now.day.clamp(1, daysInMonth);
+  final averageDailyExpense = monthExpenses / daysElapsed;
+  final projectedExpenses = averageDailyExpense * daysInMonth;
+  final projectedBalance = monthIncome - projectedExpenses;
+
+  return _MonthlyForecast(
+    averageDailyExpense: averageDailyExpense,
+    projectedExpenses: projectedExpenses,
+    projectedBalance: projectedBalance,
+    daysElapsed: daysElapsed,
+    daysInMonth: daysInMonth,
+  );
+}
+
+class _MonthlyForecastCard extends StatelessWidget {
+  const _MonthlyForecastCard({required this.forecast});
+  final _MonthlyForecast forecast;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final positive = forecast.projectedBalance >= 0;
+    final accent = positive ? scheme.primary : scheme.error;
+
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.query_stats_outlined, color: accent),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Previsão até o fim do mês',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Estimativa baseada no ritmo médio de despesas dos '
+              '${forecast.daysElapsed} primeiros dias de ${forecast.daysInMonth}.',
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _ForecastMetric(
+                    label: 'Média diária',
+                    value: _currency(forecast.averageDailyExpense),
+                    icon: Icons.today_outlined,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _ForecastMetric(
+                    label: 'Despesas previstas',
+                    value: _currency(forecast.projectedExpenses),
+                    icon: Icons.calendar_month_outlined,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    positive
+                        ? Icons.savings_outlined
+                        : Icons.warning_amber_rounded,
+                    color: accent,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      positive
+                          ? 'Saldo mensal previsto: ${_currency(forecast.projectedBalance)}'
+                          : 'Déficit mensal previsto: ${_currency(forecast.projectedBalance.abs())}',
+                      style: TextStyle(
+                        color: accent,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'A previsão é uma referência e muda automaticamente conforme novos lançamentos são registrados.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ForecastMetric extends StatelessWidget {
+  const _ForecastMetric({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 20),
+          const SizedBox(height: 8),
+          Text(label),
+          const SizedBox(height: 4),
+          FittedBox(
+            child: Text(
+              value,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
       ),
     );
   }
