@@ -243,6 +243,9 @@ class _OverviewTab extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             _IncomeExpenseBarChart(transactions: transactions),
+
+            const SizedBox(height: 12),
+            _BalanceEvolutionChart(transactions: transactions),
             const SizedBox(height: 16),
             _FinancialDiagnosisCard(diagnosis: diagnosis),
 
@@ -1744,6 +1747,224 @@ class _DonutValueBadge extends StatelessWidget {
           color: Colors.white,
           fontSize: 11,
           fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _BalanceEvolutionPoint {
+  const _BalanceEvolutionPoint({
+    required this.year,
+    required this.month,
+    required this.balance,
+  });
+
+  final int year;
+  final int month;
+  final double balance;
+
+  String get label => _monthShort(month);
+}
+
+List<_BalanceEvolutionPoint> _buildBalanceEvolutionData(
+  List<FinancialTransaction> transactions,
+) {
+  final now = DateTime.now();
+  final points = <_BalanceEvolutionPoint>[];
+
+  for (var offset = 5; offset >= 0; offset--) {
+    final date = DateTime(now.year, now.month - offset, 1);
+    final monthEnd = DateTime(date.year, date.month + 1, 0, 23, 59, 59);
+
+    var balance = 0.0;
+
+    for (final item in transactions.where(
+      (item) => !item.date.isAfter(monthEnd),
+    )) {
+      balance += item.isIncome ? item.amount : -item.amount;
+    }
+
+    points.add(
+      _BalanceEvolutionPoint(
+        year: date.year,
+        month: date.month,
+        balance: balance,
+      ),
+    );
+  }
+
+  return points;
+}
+
+class _BalanceEvolutionChart extends StatelessWidget {
+  const _BalanceEvolutionChart({required this.transactions});
+
+  final List<FinancialTransaction> transactions;
+
+  @override
+  Widget build(BuildContext context) {
+    final points = _buildBalanceEvolutionData(transactions);
+    final values = points.map((item) => item.balance).toList();
+
+    final minValue = values.reduce((a, b) => a < b ? a : b);
+    final maxValue = values.reduce((a, b) => a > b ? a : b);
+
+    final spread = (maxValue - minValue).abs();
+    final padding = spread <= 0 ? 100.0 : spread * 0.25;
+    final minY = minValue - padding;
+    final maxY = maxValue + padding;
+
+    const lineColor = Color(0xFF2563EB);
+    const areaColor = Color(0xFF60A5FA);
+
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.show_chart_rounded, color: lineColor),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Evolução do saldo acumulado',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Veja como o saldo acumulado (receitas - despesas) evoluiu nos últimos 6 meses',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              height: 245,
+              child: LineChart(
+                LineChartData(
+                  minY: minY,
+                  maxY: maxY,
+                  borderData: FlBorderData(show: false),
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    horizontalInterval: (maxY - minY) / 4,
+                    getDrawingHorizontalLine: (value) => FlLine(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.outlineVariant.withValues(alpha: 0.45),
+                      strokeWidth: 1,
+                    ),
+                  ),
+                  titlesData: FlTitlesData(
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    leftTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 32,
+                        interval: 1,
+                        getTitlesWidget: (value, meta) {
+                          final index = value.toInt();
+                          if (index < 0 || index >= points.length) {
+                            return const SizedBox.shrink();
+                          }
+
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              points[index].label,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  lineTouchData: LineTouchData(
+                    enabled: true,
+                    touchTooltipData: LineTouchTooltipData(
+                      getTooltipItems: (spots) {
+                        return spots.map((spot) {
+                          final index = spot.x.toInt();
+                          final point = points[index];
+                          return LineTooltipItem(
+                            '${point.label}\nSaldo acumulado\n${_currency(point.balance)}',
+                            const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          );
+                        }).toList();
+                      },
+                    ),
+                  ),
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: points.asMap().entries.map((entry) {
+                        return FlSpot(
+                          entry.key.toDouble(),
+                          entry.value.balance,
+                        );
+                      }).toList(),
+                      isCurved: true,
+                      curveSmoothness: 0.28,
+                      barWidth: 4,
+                      color: lineColor,
+                      isStrokeCapRound: true,
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, barData, index) {
+                          return FlDotCirclePainter(
+                            radius: 5,
+                            color: lineColor,
+                            strokeWidth: 3,
+                            strokeColor: Colors.white,
+                          );
+                        },
+                      ),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        color: areaColor.withValues(alpha: 0.20),
+                      ),
+                    ),
+                  ],
+                ),
+                duration: const Duration(milliseconds: 700),
+                curve: Curves.easeOutCubic,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.info_outline, size: 16, color: lineColor),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Passe o mouse ou toque nos pontos para ver o saldo acumulado de cada mês.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
