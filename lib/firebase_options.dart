@@ -57,7 +57,6 @@ class DefaultFirebaseOptions {
     projectId: 'saude-financeira-familia-e5ba5',
     storageBucket: 'saude-financeira-familia-e5ba5.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyDYmgvwuKC5ZjzMNUTYHk-eMCKu2ggUrbE',
     appId: '1:469474103344:ios:65ee403adbdcd7714d1df5',
@@ -66,7 +65,6 @@ class DefaultFirebaseOptions {
     storageBucket: 'saude-financeira-familia-e5ba5.firebasestorage.app',
     iosBundleId: 'com.example.saudeFinanceiraFamiliar',
   );
-
   static const FirebaseOptions macos = FirebaseOptions(
     apiKey: 'AIzaSyDYmgvwuKC5ZjzMNUTYHk-eMCKu2ggUrbE',
     appId: '1:469474103344:ios:65ee403adbdcd7714d1df5',
