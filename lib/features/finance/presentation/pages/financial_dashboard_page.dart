@@ -187,6 +187,13 @@ class _OverviewTab extends StatelessWidget {
           monthExpenses: monthExpenses,
           savingsRate: savingsRate,
         );
+
+        final recommendations = _buildFinancialRecommendations(
+          monthIncome: monthIncome,
+          monthExpenses: monthExpenses,
+          savingsRate: savingsRate,
+          transactions: monthItems,
+        );
         return ListView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
           children: [
@@ -223,6 +230,8 @@ class _OverviewTab extends StatelessWidget {
             const SizedBox(height: 16),
             _FinancialDiagnosisCard(diagnosis: diagnosis),
 
+            const SizedBox(height: 12),
+            _FinancialRecommendationsCard(recommendations: recommendations),
             const SizedBox(height: 24),
             Text(
               'Despesas por categoria',
@@ -605,6 +614,174 @@ class _PlanningTab extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+List<String> _buildFinancialRecommendations({
+  required double monthIncome,
+  required double monthExpenses,
+  required double savingsRate,
+  required List<FinancialTransaction> transactions,
+}) {
+  final recommendations = <String>[];
+  final monthMargin = monthIncome - monthExpenses;
+
+  final expenseTotals = <String, double>{};
+  for (final item in transactions.where((item) => !item.isIncome)) {
+    expenseTotals[item.category] =
+        (expenseTotals[item.category] ?? 0) + item.amount;
+  }
+
+  String? topCategory;
+  double topCategoryAmount = 0;
+  for (final entry in expenseTotals.entries) {
+    if (entry.value > topCategoryAmount) {
+      topCategory = entry.key;
+      topCategoryAmount = entry.value;
+    }
+  }
+
+  if (monthIncome == 0 && monthExpenses == 0) {
+    recommendations.add(
+      'Registre receitas e despesas do mês para receber recomendações personalizadas.',
+    );
+    recommendations.add(
+      'Defina ao menos um orçamento mensal para acompanhar limites por categoria.',
+    );
+    return recommendations;
+  }
+
+  if (monthIncome <= 0 && monthExpenses > 0) {
+    recommendations.add(
+      'Confira se todas as receitas do mês foram registradas antes de tomar decisões com base no saldo.',
+    );
+    if (topCategory != null) {
+      recommendations.add(
+        'Revise os gastos em $topCategory, hoje a categoria com maior despesa no mês (${_currency(topCategoryAmount)}).',
+      );
+    }
+    recommendations.add(
+      'Evite novos gastos não essenciais até que as receitas do mês estejam atualizadas.',
+    );
+    return recommendations;
+  }
+
+  if (monthExpenses > monthIncome) {
+    final deficit = monthExpenses - monthIncome;
+    recommendations.add(
+      'Reduza ou adie gastos não essenciais para eliminar o déficit mensal de ${_currency(deficit)}.',
+    );
+    if (topCategory != null) {
+      recommendations.add(
+        'Comece por $topCategory, que concentra ${_currency(topCategoryAmount)} das despesas deste mês.',
+      );
+    }
+    recommendations.add(
+      'Revise os limites do Planejamento e priorize despesas essenciais até o saldo mensal voltar ao positivo.',
+    );
+    return recommendations;
+  }
+
+  if (savingsRate >= 20) {
+    final suggestedGoalAmount = monthMargin * 0.5;
+    recommendations.add(
+      'Direcione cerca de ${_currency(suggestedGoalAmount)} da sobra do mês para sua principal meta financeira.',
+    );
+    recommendations.add(
+      'Mantenha a taxa de economia acima de 20% e preserve uma reserva para imprevistos.',
+    );
+    if (topCategory != null) {
+      recommendations.add(
+        'Continue acompanhando $topCategory, atualmente a maior categoria de despesa do mês.',
+      );
+    }
+    return recommendations;
+  }
+
+  if (savingsRate >= 10) {
+    recommendations.add(
+      'Tente elevar sua economia mensal de ${savingsRate.toStringAsFixed(0)}% para pelo menos 20%.',
+    );
+    if (topCategory != null) {
+      final suggestedReduction = topCategoryAmount * 0.1;
+      recommendations.add(
+        'Uma redução de 10% em $topCategory liberaria aproximadamente ${_currency(suggestedReduction)} neste mês.',
+      );
+    }
+    recommendations.add(
+      'Use parte da margem positiva de ${_currency(monthMargin)} para acelerar uma meta financeira.',
+    );
+    return recommendations;
+  }
+
+  recommendations.add(
+    'Sua margem está positiva, mas pequena. Busque chegar a pelo menos 10% de economia mensal.',
+  );
+  if (topCategory != null) {
+    recommendations.add(
+      'Revise $topCategory, sua maior categoria de despesa no mês (${_currency(topCategoryAmount)}).',
+    );
+  }
+  recommendations.add(
+    'Evite ampliar compromissos fixos enquanto a margem mensal estiver abaixo de 10%.',
+  );
+
+  return recommendations;
+}
+
+class _FinancialRecommendationsCard extends StatelessWidget {
+  const _FinancialRecommendationsCard({required this.recommendations});
+
+  final List<String> recommendations;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.auto_awesome_outlined,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Recomendações para este mês',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            ...recommendations.asMap().entries.map(
+              (entry) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CircleAvatar(
+                      radius: 12,
+                      child: Text(
+                        '${entry.key + 1}',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text(entry.value)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
