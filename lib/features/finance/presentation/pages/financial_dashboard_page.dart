@@ -246,6 +246,9 @@ class _OverviewTab extends StatelessWidget {
 
             const SizedBox(height: 12),
             _BalanceEvolutionChart(transactions: transactions),
+
+            const SizedBox(height: 12),
+            _MonthlySavingsRateChart(transactions: transactions),
             const SizedBox(height: 16),
             _FinancialDiagnosisCard(diagnosis: diagnosis),
 
@@ -1966,6 +1969,272 @@ class _BalanceEvolutionChart extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _MonthlySavingsRatePoint {
+  const _MonthlySavingsRatePoint({
+    required this.month,
+    required this.rate,
+    required this.hasIncome,
+  });
+
+  final int month;
+  final double rate;
+  final bool hasIncome;
+
+  String get label => _monthShort(month);
+}
+
+List<_MonthlySavingsRatePoint> _buildMonthlySavingsRateData(
+  List<FinancialTransaction> transactions,
+) {
+  final now = DateTime.now();
+  final points = <_MonthlySavingsRatePoint>[];
+
+  for (var offset = 5; offset >= 0; offset--) {
+    final date = DateTime(now.year, now.month - offset, 1);
+    final items = transactions.where(
+      (item) => item.date.year == date.year && item.date.month == date.month,
+    );
+
+    var income = 0.0;
+    var expenses = 0.0;
+    for (final item in items) {
+      if (item.isIncome) {
+        income += item.amount;
+      } else {
+        expenses += item.amount;
+      }
+    }
+
+    final rate = income <= 0 ? 0.0 : ((income - expenses) / income) * 100;
+
+    points.add(
+      _MonthlySavingsRatePoint(
+        month: date.month,
+        rate: rate,
+        hasIncome: income > 0,
+      ),
+    );
+  }
+
+  return points;
+}
+
+class _MonthlySavingsRateChart extends StatelessWidget {
+  const _MonthlySavingsRateChart({required this.transactions});
+
+  final List<FinancialTransaction> transactions;
+
+  @override
+  Widget build(BuildContext context) {
+    final points = _buildMonthlySavingsRateData(transactions);
+    final rates = points.map((item) => item.rate).toList();
+    final minRate = rates.reduce((a, b) => a < b ? a : b);
+    final maxRate = rates.reduce((a, b) => a > b ? a : b);
+    final minY = minRate < 0 ? minRate - 15 : -10.0;
+    final maxY = maxRate > 100 ? maxRate + 15 : 110.0;
+
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.savings_outlined, color: Color(0xFF16A34A)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Taxa de economia mensal',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Percentual da renda que sobrou após as despesas em cada mês',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              height: 245,
+              child: BarChart(
+                BarChartData(
+                  minY: minY,
+                  maxY: maxY,
+                  alignment: BarChartAlignment.spaceAround,
+                  borderData: FlBorderData(show: false),
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    horizontalInterval: (maxY - minY) / 4,
+                    getDrawingHorizontalLine: (value) => FlLine(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.outlineVariant.withValues(alpha: 0.45),
+                      strokeWidth: 1,
+                    ),
+                  ),
+                  extraLinesData: ExtraLinesData(
+                    horizontalLines: [
+                      HorizontalLine(
+                        y: 0,
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.outline.withValues(alpha: 0.7),
+                        strokeWidth: 1.5,
+                      ),
+                    ],
+                  ),
+                  titlesData: FlTitlesData(
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    leftTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 32,
+                        getTitlesWidget: (value, meta) {
+                          final index = value.toInt();
+                          if (index < 0 || index >= points.length) {
+                            return const SizedBox.shrink();
+                          }
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              points[index].label,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  barTouchData: BarTouchData(
+                    enabled: true,
+                    touchTooltipData: BarTouchTooltipData(
+                      getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                        final point = points[group.x];
+                        final text = point.hasIncome
+                            ? '${point.label}\nEconomia: ${point.rate.toStringAsFixed(1)}%'
+                            : '${point.label}\nSem receita registrada';
+                        return BarTooltipItem(
+                          text,
+                          const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  barGroups: points.asMap().entries.map((entry) {
+                    final point = entry.value;
+                    final positive = point.rate >= 0;
+                    final color = !point.hasIncome
+                        ? const Color(0xFF94A3B8)
+                        : positive
+                        ? const Color(0xFF16A34A)
+                        : const Color(0xFFDC2626);
+
+                    return BarChartGroupData(
+                      x: entry.key,
+                      barRods: [
+                        BarChartRodData(
+                          toY: point.rate,
+                          width: 22,
+                          color: color,
+                          borderRadius: BorderRadius.vertical(
+                            top: positive
+                                ? const Radius.circular(7)
+                                : Radius.zero,
+                            bottom: positive
+                                ? Radius.zero
+                                : const Radius.circular(7),
+                          ),
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                ),
+                duration: const Duration(milliseconds: 700),
+                curve: Curves.easeOutCubic,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                _SavingsRateLegend(
+                  color: const Color(0xFF16A34A),
+                  label: 'Economia positiva',
+                ),
+                const SizedBox(width: 14),
+                _SavingsRateLegend(
+                  color: const Color(0xFFDC2626),
+                  label: 'Gastos acima da renda',
+                ),
+                const SizedBox(width: 14),
+                _SavingsRateLegend(
+                  color: const Color(0xFF94A3B8),
+                  label: 'Sem receita',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SavingsRateLegend extends StatelessWidget {
+  const _SavingsRateLegend({required this.color, required this.label});
+
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Flexible(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              label,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
       ),
     );
   }
