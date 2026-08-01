@@ -246,6 +246,8 @@ class _OverviewTab extends StatelessWidget {
             const SizedBox(height: 16),
             _MonthlyConsolidatedReportCard(transactions: monthItems),
             const SizedBox(height: 16),
+            _ExpenseCategoryComparisonCard(transactions: transactions),
+            const SizedBox(height: 16),
             _IncomeExpenseBarChart(transactions: transactions),
 
             const SizedBox(height: 12),
@@ -1312,6 +1314,230 @@ String _monthShort(int month) {
     'Dez',
   ];
   return labels[month - 1];
+}
+
+class _ExpenseCategoryComparisonCard extends StatelessWidget {
+  const _ExpenseCategoryComparisonCard({required this.transactions});
+
+  final List<FinancialTransaction> transactions;
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final currentStart = DateTime(now.year, now.month);
+    final previousStart = DateTime(now.year, now.month - 1);
+    final nextStart = DateTime(now.year, now.month + 1);
+
+    final current = <String, double>{};
+    final previous = <String, double>{};
+
+    for (final item in transactions.where((item) => !item.isIncome)) {
+      final date = item.date;
+      if (!date.isBefore(currentStart) && date.isBefore(nextStart)) {
+        current[item.category] = (current[item.category] ?? 0) + item.amount;
+      } else if (!date.isBefore(previousStart) && date.isBefore(currentStart)) {
+        previous[item.category] = (previous[item.category] ?? 0) + item.amount;
+      }
+    }
+
+    final categories = {...current.keys, ...previous.keys}.toList()
+      ..sort((a, b) {
+        final aTotal = (current[a] ?? 0) + (previous[a] ?? 0);
+        final bTotal = (current[b] ?? 0) + (previous[b] ?? 0);
+        return bTotal.compareTo(aTotal);
+      });
+
+    const monthNames = [
+      'Jan',
+      'Fev',
+      'Mar',
+      'Abr',
+      'Mai',
+      'Jun',
+      'Jul',
+      'Ago',
+      'Set',
+      'Out',
+      'Nov',
+      'Dez',
+    ];
+    final currentLabel = monthNames[currentStart.month - 1];
+    final previousLabel = monthNames[previousStart.month - 1];
+
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.category_outlined, color: Color(0xFF7C3AED)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Comparativo de despesas por categoria',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Text(
+              '$currentLabel x $previousLabel — veja onde seus gastos aumentaram ou diminuíram',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 14),
+            if (categories.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF64748B).withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Text(
+                  'Ainda não há despesas suficientes para comparar os dois meses.',
+                ),
+              )
+            else
+              ...List.generate(categories.length, (index) {
+                final category = categories[index];
+                return Column(
+                  children: [
+                    _ExpenseCategoryComparisonRow(
+                      category: category,
+                      currentLabel: currentLabel,
+                      previousLabel: previousLabel,
+                      current: current[category] ?? 0,
+                      previous: previous[category] ?? 0,
+                    ),
+                    if (index < categories.length - 1)
+                      const Divider(height: 18),
+                  ],
+                );
+              }),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ExpenseCategoryComparisonRow extends StatelessWidget {
+  const _ExpenseCategoryComparisonRow({
+    required this.category,
+    required this.currentLabel,
+    required this.previousLabel,
+    required this.current,
+    required this.previous,
+  });
+
+  final String category;
+  final String currentLabel;
+  final String previousLabel;
+  final double current;
+  final double previous;
+
+  @override
+  Widget build(BuildContext context) {
+    final delta = current - previous;
+    final unchanged = delta.abs() < 0.005;
+    final newExpense = previous <= 0 && current > 0;
+    final noCurrentExpense = previous > 0 && current <= 0;
+    final reduced = delta < 0;
+
+    final Color accent;
+    final IconData icon;
+    final String changeText;
+
+    if (unchanged) {
+      accent = const Color(0xFF64748B);
+      icon = Icons.remove_rounded;
+      changeText = 'Sem alteração';
+    } else if (newExpense) {
+      accent = const Color(0xFFDC2626);
+      icon = Icons.add_circle_outline_rounded;
+      changeText = 'Nova despesa: ${_currency(current)}';
+    } else if (noCurrentExpense) {
+      accent = const Color(0xFF16A34A);
+      icon = Icons.check_circle_outline_rounded;
+      changeText = 'Sem gasto neste mês';
+    } else if (reduced) {
+      accent = const Color(0xFF16A34A);
+      icon = Icons.arrow_downward_rounded;
+      changeText = 'Redução de ${_currency(delta.abs())}';
+    } else {
+      accent = const Color(0xFFDC2626);
+      icon = Icons.arrow_upward_rounded;
+      changeText = 'Aumento de ${_currency(delta)}';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: accent, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  category,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 3),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 3,
+                  children: [
+                    Text(
+                      '$previousLabel: ${_currency(previous)}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    Text(
+                      '$currentLabel: ${_currency(current)}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              changeText,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: accent,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _MonthlyConsolidatedReportCard extends StatelessWidget {
