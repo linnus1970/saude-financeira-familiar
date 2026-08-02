@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-enum TransactionType { income, expense }
+enum TransactionType { income, expense, investment }
 
 class FinancialTransaction {
   const FinancialTransaction({
@@ -22,6 +22,8 @@ class FinancialTransaction {
   final DateTime createdAt;
 
   bool get isIncome => type == TransactionType.income;
+  bool get isExpense => type == TransactionType.expense;
+  bool get isInvestment => type == TransactionType.investment;
 
   FinancialTransaction copyWith({
     String? id,
@@ -62,9 +64,11 @@ class FinancialTransaction {
       id: id,
       description: map['description'] as String? ?? '',
       amount: (map['amount'] as num? ?? 0).toDouble(),
-      type: (map['type'] as String?) == TransactionType.income.name
-          ? TransactionType.income
-          : TransactionType.expense,
+      type: switch (map['type'] as String?) {
+        'income' => TransactionType.income,
+        'investment' => TransactionType.investment,
+        _ => TransactionType.expense,
+      },
       category: map['category'] as String? ?? 'Outros',
       date: dateValue is Timestamp ? dateValue.toDate() : DateTime.now(),
       createdAt: createdAtValue is Timestamp

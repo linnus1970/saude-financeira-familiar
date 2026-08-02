@@ -44,10 +44,22 @@ class _TransactionFormPageState extends State<TransactionFormPage> {
     'Outras despesas',
   ];
 
+  static const _investmentCategories = [
+    'Reserva de emergência',
+    'Renda fixa',
+    'Fundos',
+    'Ações',
+    'Previdência',
+    'Criptomoedas',
+    'Outros investimentos',
+  ];
+
   List<String> get _categories {
-    return _type == TransactionType.income
-        ? _incomeCategories
-        : _expenseCategories;
+    return switch (_type) {
+      TransactionType.income => _incomeCategories,
+      TransactionType.expense => _expenseCategories,
+      TransactionType.investment => _investmentCategories,
+    };
   }
 
   @override
@@ -167,6 +179,11 @@ class _TransactionFormPageState extends State<TransactionFormPage> {
                           label: Text('Despesa'),
                           icon: Icon(Icons.trending_down),
                         ),
+                        ButtonSegment(
+                          value: TransactionType.investment,
+                          label: Text('Investimento'),
+                          icon: Icon(Icons.savings_outlined),
+                        ),
                       ],
                       selected: {_type},
                       onSelectionChanged: (selection) {
@@ -196,9 +213,11 @@ class _TransactionFormPageState extends State<TransactionFormPage> {
                         decimal: true,
                       ),
                       style: TextStyle(
-                        color: _type == TransactionType.expense
-                            ? const Color(0xFFDC2626)
-                            : const Color(0xFF16A34A),
+                        color: switch (_type) {
+                          TransactionType.income => const Color(0xFF16A34A),
+                          TransactionType.expense => const Color(0xFFDC2626),
+                          TransactionType.investment => const Color(0xFF2563EB),
+                        },
                         fontWeight: FontWeight.w800,
                       ),
 
