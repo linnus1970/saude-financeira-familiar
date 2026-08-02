@@ -550,6 +550,17 @@ class _PlanningTab extends StatelessWidget {
                     final progress = ratio.clamp(0.0, 1.0);
                     final exceeded = spent > budget.limit;
                     final excess = exceeded ? spent - budget.limit : 0.0;
+                    final remaining = (budget.limit - spent).clamp(
+                      0.0,
+                      double.infinity,
+                    );
+                    final percentUsed = (ratio * 100).round();
+
+                    final Color progressColor = ratio >= 1
+                        ? const Color(0xFFDC2626)
+                        : ratio >= 0.8
+                        ? const Color(0xFFF59E0B)
+                        : const Color(0xFF16A34A);
 
                     return Card(
                       child: ListTile(
@@ -558,10 +569,48 @@ class _PlanningTab extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const SizedBox(height: 6),
-                            LinearProgressIndicator(value: progress),
+                            LinearProgressIndicator(
+                              value: progress,
+                              color: progressColor,
+                            ),
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 14,
+                              runSpacing: 4,
+                              children: [
+                                Text(
+                                  'Gasto: ${_currency(spent)}',
+                                  style: const TextStyle(
+                                    color: Color(0xFFDC2626),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                Text(
+                                  'Limite: ${_currency(budget.limit)}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                Text(
+                                  'Usado: $percentUsed%',
+                                  style: TextStyle(
+                                    color: progressColor,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
                             const SizedBox(height: 4),
                             Text(
-                              '${_currency(spent)} de ${_currency(budget.limit)} (${(ratio * 100).round()}%)',
+                              exceeded
+                                  ? 'Saldo disponível: ${_currency(0)}'
+                                  : 'Saldo disponível: ${_currency(remaining)}',
+                              style: TextStyle(
+                                color: exceeded
+                                    ? const Color(0xFFDC2626)
+                                    : const Color(0xFF16A34A),
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                             if (exceeded) ...[
                               const SizedBox(height: 4),

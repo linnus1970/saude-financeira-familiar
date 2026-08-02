@@ -15,7 +15,20 @@ class GoalFormPage extends StatefulWidget {
 
 class _GoalFormPageState extends State<GoalFormPage> {
   final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _name;
+  late String _name;
+
+  static const _goalOptions = [
+    'Reserva de emergência',
+    'Viagem',
+    'Compra de veículo',
+    'Compra de imóvel',
+    'Reforma',
+    'Educação',
+    'Aposentadoria',
+    'Quitar dívidas',
+    'Investimentos',
+    'Outro objetivo',
+  ];
   late final TextEditingController _target;
   late final TextEditingController _current;
   late DateTime _deadline;
@@ -25,7 +38,7 @@ class _GoalFormPageState extends State<GoalFormPage> {
   void initState() {
     super.initState();
     final goal = widget.goal;
-    _name = TextEditingController(text: goal?.name ?? '');
+    _name = goal?.name ?? _goalOptions.first;
     _target = TextEditingController(
       text: goal == null ? '' : _number(goal.targetAmount),
     );
@@ -37,7 +50,6 @@ class _GoalFormPageState extends State<GoalFormPage> {
 
   @override
   void dispose() {
-    _name.dispose();
     _target.dispose();
     _current.dispose();
     super.dispose();
@@ -65,7 +77,7 @@ class _GoalFormPageState extends State<GoalFormPage> {
       await widget.repository.saveGoal(
         FinancialGoal(
           id: existing?.id ?? '',
-          name: _name.text.trim(),
+          name: _name,
           targetAmount: _parse(_target.text)!,
           currentAmount: _parse(_current.text) ?? 0,
           deadline: _deadline,
@@ -97,16 +109,31 @@ class _GoalFormPageState extends State<GoalFormPage> {
             key: _formKey,
             child: Column(
               children: [
-                TextFormField(
-                  controller: _name,
+                DropdownButtonFormField<String>(
+                  initialValue: _goalOptions.contains(_name) ? _name : null,
                   decoration: const InputDecoration(
-                    labelText: 'Nome da meta',
+                    labelText: 'Tipo de meta',
                     prefixIcon: Icon(Icons.flag_outlined),
                     border: OutlineInputBorder(),
                   ),
-                  validator: (value) => (value ?? '').trim().length < 3
-                      ? 'Informe o nome da meta.'
-                      : null,
+                  hint: Text(
+                    _goalOptions.contains(_name) ? 'Selecione uma meta' : _name,
+                  ),
+                  items: [
+                    if (!_goalOptions.contains(_name))
+                      DropdownMenuItem(value: _name, child: Text(_name)),
+                    ..._goalOptions.map(
+                      (option) =>
+                          DropdownMenuItem(value: option, child: Text(option)),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() => _name = value);
+                    }
+                  },
+                  validator: (value) =>
+                      value == null ? 'Selecione uma meta.' : null,
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
