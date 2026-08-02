@@ -612,16 +612,45 @@ class _PlanningTab extends StatelessWidget {
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
-                            if (exceeded) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                'Orçamento excedido em ${_currency(excess)}',
-                                style: TextStyle(
-                                  color: Theme.of(context).colorScheme.error,
-                                  fontWeight: FontWeight.w700,
-                                ),
+                            const SizedBox(height: 6),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 8,
                               ),
-                            ],
+                              decoration: BoxDecoration(
+                                color: progressColor.withValues(alpha: 0.10),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    ratio >= 1
+                                        ? Icons.error_outline_rounded
+                                        : ratio >= 0.8
+                                        ? Icons.warning_amber_rounded
+                                        : Icons.check_circle_outline_rounded,
+                                    color: progressColor,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 7),
+                                  Expanded(
+                                    child: Text(
+                                      ratio >= 1
+                                          ? 'Orçamento excedido em ${_currency(excess)}'
+                                          : ratio >= 0.8
+                                          ? 'Atenção: você já utilizou $percentUsed% deste orçamento'
+                                          : 'Dentro do orçamento',
+                                      style: TextStyle(
+                                        color: progressColor,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
                         trailing: IconButton(
