@@ -60,6 +60,11 @@ class PlanningRepository {
     }
   }
 
+  Future<void> deleteGoal(String id) async {
+    if (id.isEmpty) return;
+    await _goals.doc(id).delete();
+  }
+
   Future<void> saveBudget(MonthlyBudget budget) async {
     final existing = await _budgets
         .where('month', isEqualTo: budget.month)
@@ -81,5 +86,10 @@ class PlanningRepository {
     } else {
       await _budgets.doc(budget.id).set(budget.toMap());
     }
+  }
+
+  Future<void> deleteBudget(String id) async {
+    if (id.isEmpty) return;
+    await _budgets.doc(id).delete();
   }
 }

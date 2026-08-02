@@ -653,10 +653,79 @@ class _PlanningTab extends StatelessWidget {
                             ),
                           ],
                         ),
-                        trailing: IconButton(
-                          tooltip: 'Editar',
-                          onPressed: () => onOpenBudget(budget),
-                          icon: const Icon(Icons.edit_outlined),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: 'Editar orçamento',
+                              onPressed: () => onOpenBudget(budget),
+                              icon: const Icon(Icons.edit_outlined),
+                            ),
+                            IconButton(
+                              tooltip: 'Excluir orçamento',
+                              icon: const Icon(
+                                Icons.delete_outline_rounded,
+                                color: Color(0xFFDC2626),
+                              ),
+                              onPressed: () async {
+                                final confirmed = await showDialog<bool>(
+                                  context: context,
+                                  builder: (dialogContext) => AlertDialog(
+                                    title: const Text(
+                                      'Excluir este orçamento?',
+                                    ),
+                                    content: Text(
+                                      'O orçamento de "${budget.category}" será excluído deste mês.',
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.of(
+                                          dialogContext,
+                                        ).pop(false),
+                                        child: const Text('Cancelar'),
+                                      ),
+                                      FilledButton(
+                                        onPressed: () => Navigator.of(
+                                          dialogContext,
+                                        ).pop(true),
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: const Color(
+                                            0xFFDC2626,
+                                          ),
+                                        ),
+                                        child: const Text('Excluir'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+
+                                if (confirmed != true) return;
+
+                                try {
+                                  await planningRepository.deleteBudget(
+                                    budget.id,
+                                  );
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Orçamento excluído com sucesso.',
+                                      ),
+                                    ),
+                                  );
+                                } catch (error) {
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Não foi possível excluir o orçamento: $error',
+                                      ),
+                                    ),
+                                  );
+                                }
+                              },
+                            ),
+                          ],
                         ),
                       ),
                     );
@@ -717,7 +786,81 @@ class _PlanningTab extends StatelessWidget {
                                       ),
                                     ),
                                   ),
-                                  Text('${(goal.progress * 100).round()}%'),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text('${(goal.progress * 100).round()}%'),
+                                      const SizedBox(width: 4),
+                                      IconButton(
+                                        tooltip: 'Excluir meta',
+                                        visualDensity: VisualDensity.compact,
+                                        icon: const Icon(
+                                          Icons.delete_outline_rounded,
+                                          color: Color(0xFFDC2626),
+                                        ),
+                                        onPressed: () async {
+                                          final confirmed = await showDialog<bool>(
+                                            context: context,
+                                            builder: (dialogContext) => AlertDialog(
+                                              title: const Text(
+                                                'Excluir esta meta?',
+                                              ),
+                                              content: Text(
+                                                'A meta "${goal.name}" será excluída permanentemente.',
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () => Navigator.of(
+                                                    dialogContext,
+                                                  ).pop(false),
+                                                  child: const Text('Cancelar'),
+                                                ),
+                                                FilledButton(
+                                                  onPressed: () => Navigator.of(
+                                                    dialogContext,
+                                                  ).pop(true),
+                                                  style: FilledButton.styleFrom(
+                                                    backgroundColor:
+                                                        const Color(0xFFDC2626),
+                                                  ),
+                                                  child: const Text('Excluir'),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+
+                                          if (confirmed != true) return;
+
+                                          try {
+                                            await planningRepository.deleteGoal(
+                                              goal.id,
+                                            );
+                                            if (!context.mounted) return;
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                  'Meta excluída com sucesso.',
+                                                ),
+                                              ),
+                                            );
+                                          } catch (error) {
+                                            if (!context.mounted) return;
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  'Não foi possível excluir a meta: $error',
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                        },
+                                      ),
+                                    ],
+                                  ),
                                 ],
                               ),
                               const SizedBox(height: 10),
