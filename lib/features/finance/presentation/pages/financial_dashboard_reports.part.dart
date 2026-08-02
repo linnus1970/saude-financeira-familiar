@@ -241,7 +241,7 @@ class _ExpenseCategoryComparisonCard extends StatelessWidget {
     final current = <String, double>{};
     final previous = <String, double>{};
 
-    for (final item in transactions.where((item) => !item.isIncome)) {
+    for (final item in transactions.where((item) => item.isExpense)) {
       final date = item.date;
       if (!date.isBefore(currentStart) && date.isBefore(nextStart)) {
         current[item.category] = (current[item.category] ?? 0) + item.amount;
@@ -465,7 +465,7 @@ class _MonthlyConsolidatedReportCard extends StatelessWidget {
         : ((income - expenses) / income) * 100;
 
     final expenseTotals = <String, double>{};
-    for (final item in transactions.where((item) => !item.isIncome)) {
+    for (final item in transactions.where((item) => item.isExpense)) {
       expenseTotals[item.category] =
           (expenseTotals[item.category] ?? 0) + item.amount;
     }
@@ -714,7 +714,7 @@ _MonthComparisonData _buildMonthComparisonData(
       .fold<double>(0, (sum, item) => sum + item.amount);
 
   double expenses(Iterable<FinancialTransaction> items) => items
-      .where((item) => !item.isIncome)
+      .where((item) => item.isExpense)
       .fold<double>(0, (sum, item) => sum + item.amount);
 
   return _MonthComparisonData(

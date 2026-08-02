@@ -183,6 +183,23 @@ class _OverviewTab extends StatelessWidget {
 
         final monthIncome = _sumIncome(monthItems);
         final monthExpenses = _sumExpenses(monthItems);
+        final monthInvestments = _sumInvestments(monthItems);
+        final monthRedemptions = _sumRedemptions(monthItems);
+        final totalInvestments =
+            _sumInvestments(transactions) - _sumRedemptions(transactions);
+        final monthStart = DateTime(now.year, now.month);
+        final previousItems = transactions
+            .where((item) => item.date.isBefore(monthStart))
+            .toList();
+        final carriedToMonth =
+            _sumIncome(previousItems) -
+            _sumExpenses(previousItems) -
+            _sumInvestments(previousItems) +
+            _sumRedemptions(previousItems);
+        final availableBeforeInvest =
+            carriedToMonth + monthIncome - monthExpenses;
+        final availableToInvest =
+            availableBeforeInvest - monthInvestments + monthRedemptions;
         final balance = _sumIncome(transactions) - _sumExpenses(transactions);
         final savingsRate = monthIncome <= 0
             ? 0.0
@@ -245,6 +262,71 @@ class _OverviewTab extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Investimentos',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _MetricCard(
+                            title: 'Sobra antes de investir',
+                            value: _currency(availableBeforeInvest),
+                            icon: Icons.account_balance_wallet_outlined,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _MetricCard(
+                            title: 'Investido no mês',
+                            value: _currency(monthInvestments),
+                            icon: Icons.savings_outlined,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _MetricCard(
+                            title: 'Resgatado no mês',
+                            value: _currency(monthRedemptions),
+                            icon: Icons.account_balance_wallet_outlined,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _MetricCard(
+                            title: 'Total investido',
+                            value: _currency(totalInvestments),
+                            icon: Icons.savings_outlined,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _MetricCard(
+                            title: 'Ainda disponível',
+                            value: _currency(availableToInvest),
+                            icon: Icons.trending_up,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 16),
             _MonthComparisonCard(transactions: transactions),
@@ -383,7 +465,7 @@ class _TransactionsTabState extends State<_TransactionsTab> {
         if (_filter == 'Receitas') {
           items = items.where((item) => item.isIncome).toList();
         } else if (_filter == 'Despesas') {
-          items = items.where((item) => !item.isIncome).toList();
+          items = items.where((item) => item.isExpense).toList();
         }
 
         return ListView(
@@ -538,7 +620,7 @@ class _PlanningTab extends StatelessWidget {
                     final spent = transactions
                         .where(
                           (item) =>
-                              !item.isIncome &&
+                              item.isExpense &&
                               item.category == budget.category &&
                               item.date.month == budget.month &&
                               item.date.year == budget.year,

@@ -59,6 +59,7 @@ class _TransactionFormPageState extends State<TransactionFormPage> {
       TransactionType.income => _incomeCategories,
       TransactionType.expense => _expenseCategories,
       TransactionType.investment => _investmentCategories,
+      TransactionType.redemption => _investmentCategories,
     };
   }
 
@@ -119,6 +120,20 @@ class _TransactionFormPageState extends State<TransactionFormPage> {
           .replaceAll(',', '.');
       final amount = double.parse(normalized);
       final current = widget.transaction;
+
+      if (_type == TransactionType.redemption) {
+        final available = await widget.repository.availableInvestmentAmount(
+          category: _category,
+          excludingTransactionId: current?.id,
+          upToDate: _date,
+        );
+
+        if (amount > available) {
+          throw StateError(
+            'Saldo disponível para resgate em $_category: R\$ ${available.toStringAsFixed(2).replaceAll('.', ',')}.',
+          );
+        }
+      }
 
       final transaction = FinancialTransaction(
         id: current?.id ?? '',
@@ -184,6 +199,11 @@ class _TransactionFormPageState extends State<TransactionFormPage> {
                           label: Text('Investimento'),
                           icon: Icon(Icons.savings_outlined),
                         ),
+                        ButtonSegment(
+                          value: TransactionType.redemption,
+                          label: Text('Resgate'),
+                          icon: Icon(Icons.account_balance_wallet_outlined),
+                        ),
                       ],
                       selected: {_type},
                       onSelectionChanged: (selection) {
@@ -217,6 +237,7 @@ class _TransactionFormPageState extends State<TransactionFormPage> {
                           TransactionType.income => const Color(0xFF16A34A),
                           TransactionType.expense => const Color(0xFFDC2626),
                           TransactionType.investment => const Color(0xFF2563EB),
+                          TransactionType.redemption => const Color(0xFF7C3AED),
                         },
                         fontWeight: FontWeight.w800,
                       ),

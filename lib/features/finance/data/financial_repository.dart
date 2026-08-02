@@ -42,6 +42,35 @@ class FinancialRepository {
         );
   }
 
+  Future<double> availableInvestmentAmount({
+    required String category,
+    String? excludingTransactionId,
+    DateTime? upToDate,
+  }) async {
+    final snapshot = await _transactions.get();
+    var total = 0.0;
+
+    for (final document in snapshot.docs) {
+      if (document.id == excludingTransactionId) continue;
+
+      final transaction = FinancialTransaction.fromMap(
+        document.id,
+        document.data(),
+      );
+
+      if (transaction.category != category) continue;
+      if (upToDate != null && transaction.date.isAfter(upToDate)) continue;
+
+      if (transaction.isInvestment) {
+        total += transaction.amount;
+      } else if (transaction.isRedemption) {
+        total -= transaction.amount;
+      }
+    }
+
+    return total;
+  }
+
   Future<void> addTransaction(FinancialTransaction transaction) async {
     await _transactions.add(transaction.toMap());
   }

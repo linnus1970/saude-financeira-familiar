@@ -300,7 +300,7 @@ class _CategoryBars extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final totals = <String, double>{};
-    for (final item in transactions.where((item) => !item.isIncome)) {
+    for (final item in transactions.where((item) => item.isExpense)) {
       totals[item.category] = (totals[item.category] ?? 0) + item.amount;
     }
 
@@ -405,7 +405,15 @@ double _sumIncome(List<FinancialTransaction> items) => items
     .fold(0, (sum, item) => sum + item.amount);
 
 double _sumExpenses(List<FinancialTransaction> items) => items
-    .where((item) => !item.isIncome)
+    .where((item) => item.isExpense)
+    .fold(0, (sum, item) => sum + item.amount);
+
+double _sumInvestments(List<FinancialTransaction> items) => items
+    .where((item) => item.isInvestment)
+    .fold(0, (sum, item) => sum + item.amount);
+
+double _sumRedemptions(List<FinancialTransaction> items) => items
+    .where((item) => item.isRedemption)
     .fold(0, (sum, item) => sum + item.amount);
 
 String _currency(double value) {

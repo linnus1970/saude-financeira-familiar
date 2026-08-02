@@ -269,7 +269,7 @@ List<_ExpenseCategorySlice> _buildExpenseCategorySlices(
 ) {
   final totals = <String, double>{};
 
-  for (final item in transactions.where((item) => !item.isIncome)) {
+  for (final item in transactions.where((item) => item.isExpense)) {
     totals[item.category] = (totals[item.category] ?? 0) + item.amount;
   }
 

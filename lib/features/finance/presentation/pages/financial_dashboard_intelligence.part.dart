@@ -10,7 +10,7 @@ List<String> _buildFinancialRecommendations({
   final monthMargin = monthIncome - monthExpenses;
 
   final expenseTotals = <String, double>{};
-  for (final item in transactions.where((item) => !item.isIncome)) {
+  for (final item in transactions.where((item) => item.isExpense)) {
     expenseTotals[item.category] =
         (expenseTotals[item.category] ?? 0) + item.amount;
   }
