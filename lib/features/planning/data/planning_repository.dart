@@ -61,6 +61,21 @@ class PlanningRepository {
   }
 
   Future<void> saveBudget(MonthlyBudget budget) async {
+    final existing = await _budgets
+        .where('month', isEqualTo: budget.month)
+        .where('year', isEqualTo: budget.year)
+        .where('category', isEqualTo: budget.category)
+        .get();
+
+    final duplicateExists = existing.docs.any((doc) => doc.id != budget.id);
+
+    if (duplicateExists) {
+      throw StateError(
+        'Já existe um orçamento para ${budget.category} neste mês. '
+        'Edite o orçamento existente.',
+      );
+    }
+
     if (budget.id.isEmpty) {
       await _budgets.add(budget.toMap());
     } else {
