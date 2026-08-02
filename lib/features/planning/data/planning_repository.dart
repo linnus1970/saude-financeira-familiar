@@ -92,4 +92,32 @@ class PlanningRepository {
     if (id.isEmpty) return;
     await _budgets.doc(id).delete();
   }
+
+  Future<void> addGoalContribution({
+    required String goalId,
+    required double amount,
+  }) async {
+    if (goalId.isEmpty || amount <= 0) return;
+
+    final goalRef = _goals.doc(goalId);
+
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(goalRef);
+      final data = snapshot.data();
+
+      if (data == null) {
+        throw StateError('Meta não encontrada.');
+      }
+
+      final currentAmount = (data['currentAmount'] as num? ?? 0).toDouble();
+      final targetAmount = (data['targetAmount'] as num? ?? 0).toDouble();
+
+      final updatedAmount = (currentAmount + amount).clamp(
+        0.0,
+        targetAmount > 0 ? targetAmount : double.infinity,
+      );
+
+      transaction.update(goalRef, {'currentAmount': updatedAmount});
+    });
+  }
 }

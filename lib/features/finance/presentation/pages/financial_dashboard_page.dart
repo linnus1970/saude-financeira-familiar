@@ -792,6 +792,135 @@ class _PlanningTab extends StatelessWidget {
                                       Text('${(goal.progress * 100).round()}%'),
                                       const SizedBox(width: 4),
                                       IconButton(
+                                        tooltip: 'Adicionar aporte',
+                                        visualDensity: VisualDensity.compact,
+                                        icon: const Icon(
+                                          Icons.add_circle_outline_rounded,
+                                          color: Color(0xFF16A34A),
+                                        ),
+                                        onPressed: goal.progress >= 1
+                                            ? null
+                                            : () async {
+                                                final controller =
+                                                    TextEditingController();
+
+                                                final contribution = await showDialog<double>(
+                                                  context: context,
+                                                  builder: (dialogContext) => AlertDialog(
+                                                    title: const Text(
+                                                      'Adicionar aporte',
+                                                    ),
+                                                    content: TextField(
+                                                      controller: controller,
+                                                      autofocus: true,
+                                                      keyboardType:
+                                                          const TextInputType.numberWithOptions(
+                                                            decimal: true,
+                                                          ),
+                                                      decoration: InputDecoration(
+                                                        labelText:
+                                                            'Valor do aporte',
+                                                        prefixText: 'R\$ ',
+                                                        helperText:
+                                                            'Falta ${_currency((goal.targetAmount - goal.currentAmount).clamp(0.0, double.infinity))}',
+                                                      ),
+                                                    ),
+                                                    actions: [
+                                                      TextButton(
+                                                        onPressed: () =>
+                                                            Navigator.of(
+                                                              dialogContext,
+                                                            ).pop(),
+                                                        child: const Text(
+                                                          'Cancelar',
+                                                        ),
+                                                      ),
+                                                      FilledButton(
+                                                        onPressed: () {
+                                                          final normalized =
+                                                              controller.text
+                                                                  .trim()
+                                                                  .replaceAll(
+                                                                    '.',
+                                                                    '',
+                                                                  )
+                                                                  .replaceAll(
+                                                                    ',',
+                                                                    '.',
+                                                                  );
+                                                          final value =
+                                                              double.tryParse(
+                                                                normalized,
+                                                              );
+
+                                                          if (value == null ||
+                                                              value <= 0) {
+                                                            ScaffoldMessenger.of(
+                                                              dialogContext,
+                                                            ).showSnackBar(
+                                                              const SnackBar(
+                                                                content: Text(
+                                                                  'Informe um valor de aporte maior que zero.',
+                                                                ),
+                                                              ),
+                                                            );
+                                                            return;
+                                                          }
+
+                                                          Navigator.of(
+                                                            dialogContext,
+                                                          ).pop(value);
+                                                        },
+                                                        child: const Text(
+                                                          'Adicionar',
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                );
+
+                                                controller.dispose();
+
+                                                if (contribution == null) {
+                                                  return;
+                                                }
+
+                                                try {
+                                                  await planningRepository
+                                                      .addGoalContribution(
+                                                        goalId: goal.id,
+                                                        amount: contribution,
+                                                      );
+
+                                                  if (!context.mounted) return;
+
+                                                  ScaffoldMessenger.of(
+                                                    context,
+                                                  ).showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text(
+                                                        'Aporte adicionado com sucesso.',
+                                                      ),
+                                                    ),
+                                                  );
+                                                } catch (error) {
+                                                  if (!context.mounted) return;
+
+                                                  ScaffoldMessenger.of(
+                                                    context,
+                                                  ).showSnackBar(
+                                                    SnackBar(
+                                                      content: Text(
+                                                        'Não foi possível adicionar o aporte: $error',
+                                                      ),
+                                                    ),
+                                                  );
+                                                }
+                                              },
+                                      ),
+                                      const SizedBox(width: 2),
+
+                                      IconButton(
                                         tooltip: 'Excluir meta',
                                         visualDensity: VisualDensity.compact,
                                         icon: const Icon(
@@ -871,6 +1000,21 @@ class _PlanningTab extends StatelessWidget {
                                 '${_currency(goal.targetAmount)}',
                               ),
                               const SizedBox(height: 4),
+                              Text(
+                                goal.progress >= 1
+                                    ? 'Meta concluída'
+                                    : 'Falta ${_currency((goal.targetAmount - goal.currentAmount).clamp(0.0, double.infinity))}',
+                                style: TextStyle(
+                                  color: goal.progress >= 1
+                                      ? const Color(0xFF16A34A)
+                                      : null,
+                                  fontWeight: goal.progress >= 1
+                                      ? FontWeight.w800
+                                      : FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+
                               Text('Prazo: ${_date(goal.deadline)}'),
                             ],
                           ),
