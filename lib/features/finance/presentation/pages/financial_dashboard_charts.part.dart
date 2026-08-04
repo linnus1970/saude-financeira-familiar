@@ -14,6 +14,11 @@ class _MonthlyChartPoint {
   final double expenses;
 
   String get label => _monthShort(month);
+  double get totalMoved => income + expenses;
+  double get incomePercentage =>
+      totalMoved == 0 ? 0 : (income / totalMoved) * 100;
+  double get expensePercentage =>
+      totalMoved == 0 ? 0 : (expenses / totalMoved) * 100;
 }
 
 List<_MonthlyChartPoint> _buildMonthlyChartData(
@@ -28,23 +33,14 @@ List<_MonthlyChartPoint> _buildMonthlyChartData(
       (item) => item.date.year == date.year && item.date.month == date.month,
     );
 
-    var income = 0.0;
-    var expenses = 0.0;
-
-    for (final item in items) {
-      if (item.isIncome) {
-        income += item.amount;
-      } else {
-        expenses += item.amount;
-      }
-    }
+    final totals = incomeExpenseTotals(items);
 
     points.add(
       _MonthlyChartPoint(
         year: date.year,
         month: date.month,
-        income: income,
-        expenses: expenses,
+        income: totals.income,
+        expenses: totals.expenses,
       ),
     );
   }
@@ -85,6 +81,15 @@ class _IncomeExpenseBarChart extends StatelessWidget {
     );
     final chartMax = maxValue <= 0 ? 100.0 : maxValue * 1.22;
 
+    if (!points.any((item) => item.income > 0 || item.expenses > 0)) {
+      return const _ChartEmptyCard(
+        icon: Icons.bar_chart_rounded,
+        title: 'Receitas x despesas',
+        message:
+            'O comparativo aparecerá quando houver receitas ou despesas nos últimos 6 meses.',
+      );
+    }
+
     return Card(
       elevation: 0,
       child: Padding(
@@ -104,9 +109,6 @@ class _IncomeExpenseBarChart extends StatelessWidget {
                     ),
                   ),
                 ),
-                const _ChartLegend(color: Color(0xFF16A34A), label: 'Receitas'),
-                const SizedBox(width: 10),
-                const _ChartLegend(color: Color(0xFFF97316), label: 'Despesas'),
               ],
             ),
             const SizedBox(height: 6),
@@ -114,9 +116,18 @@ class _IncomeExpenseBarChart extends StatelessWidget {
               'Comparativo colorido dos últimos 6 meses',
               style: Theme.of(context).textTheme.bodySmall,
             ),
+            const SizedBox(height: 10),
+            const Wrap(
+              spacing: 14,
+              runSpacing: 8,
+              children: [
+                _ChartLegend(color: _incomeColor, label: 'Receitas'),
+                _ChartLegend(color: _expenseColor, label: 'Despesas'),
+              ],
+            ),
             const SizedBox(height: 18),
             SizedBox(
-              height: 250,
+              height: MediaQuery.sizeOf(context).width < 400 ? 220 : 250,
               child: BarChart(
                 BarChartData(
                   maxY: chartMax,
@@ -172,8 +183,14 @@ class _IncomeExpenseBarChart extends StatelessWidget {
                     touchTooltipData: BarTouchTooltipData(
                       getTooltipItem: (group, groupIndex, rod, rodIndex) {
                         final type = rodIndex == 0 ? 'Receitas' : 'Despesas';
+                        final point = points[group.x];
+                        final percentage = rodIndex == 0
+                            ? point.incomePercentage
+                            : point.expensePercentage;
                         return BarTooltipItem(
-                          '$type\n${_currency(rod.toY)}',
+                          '${_monthLong(point.month)} ${point.year}\n'
+                          '$type: ${_currency(rod.toY)}\n'
+                          '${_percentage(percentage)}',
                           const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w700,
@@ -193,7 +210,7 @@ class _IncomeExpenseBarChart extends StatelessWidget {
                         BarChartRodData(
                           toY: item.income,
                           width: 13,
-                          color: const Color(0xFF16A34A),
+                          color: _incomeColor,
                           borderRadius: const BorderRadius.vertical(
                             top: Radius.circular(6),
                           ),
@@ -201,7 +218,7 @@ class _IncomeExpenseBarChart extends StatelessWidget {
                         BarChartRodData(
                           toY: item.expenses,
                           width: 13,
-                          color: const Color(0xFFF97316),
+                          color: _expenseColor,
                           borderRadius: const BorderRadius.vertical(
                             top: Radius.circular(6),
                           ),
@@ -214,9 +231,81 @@ class _IncomeExpenseBarChart extends StatelessWidget {
                 curve: Curves.easeOutCubic,
               ),
             ),
+            const SizedBox(height: 12),
+            _IncomeExpenseCompactSummary(points: points),
           ],
         ),
       ),
+    );
+  }
+}
+
+String _percentage(double value) =>
+    '${value.toStringAsFixed(1).replaceAll('.', ',')}%';
+
+String _monthLong(int month) => const [
+  'Janeiro',
+  'Fevereiro',
+  'Março',
+  'Abril',
+  'Maio',
+  'Junho',
+  'Julho',
+  'Agosto',
+  'Setembro',
+  'Outubro',
+  'Novembro',
+  'Dezembro',
+][month - 1];
+
+class _IncomeExpenseCompactSummary extends StatelessWidget {
+  const _IncomeExpenseCompactSummary({required this.points});
+
+  final List<_MonthlyChartPoint> points;
+
+  @override
+  Widget build(BuildContext context) {
+    final populated = points.where((point) => point.totalMoved > 0);
+    return Column(
+      children: populated
+          .map(
+            (point) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '${point.label}/${point.year}',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 3),
+                  Wrap(
+                    spacing: 14,
+                    runSpacing: 3,
+                    children: [
+                      Text(
+                        'Receitas: ${_currency(point.income)} · '
+                        '${_percentage(point.incomePercentage)}',
+                        style: const TextStyle(
+                          color: _incomeColor,
+                          fontSize: 12,
+                        ),
+                      ),
+                      Text(
+                        'Despesas: ${_currency(point.expenses)} · '
+                        '${_percentage(point.expensePercentage)}',
+                        style: const TextStyle(
+                          color: _expenseColor,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          )
+          .toList(),
     );
   }
 }
@@ -248,6 +337,50 @@ class _ChartLegend extends StatelessWidget {
           ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
         ),
       ],
+    );
+  }
+}
+
+class _ChartEmptyCard extends StatelessWidget {
+  const _ChartEmptyCard({
+    required this.icon,
+    required this.title,
+    required this.message,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(message),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -540,13 +673,9 @@ List<_BalanceEvolutionPoint> _buildBalanceEvolutionData(
     final date = DateTime(now.year, now.month - offset, 1);
     final monthEnd = DateTime(date.year, date.month + 1, 0, 23, 59, 59);
 
-    var balance = 0.0;
-
-    for (final item in transactions.where(
-      (item) => !item.date.isAfter(monthEnd),
-    )) {
-      balance += item.isIncome ? item.amount : -item.amount;
-    }
+    final balance = availableBalance(
+      transactions.where((item) => !item.date.isAfter(monthEnd)),
+    );
 
     points.add(
       _BalanceEvolutionPoint(
@@ -567,6 +696,14 @@ class _BalanceEvolutionChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (transactions.isEmpty) {
+      return const _ChartEmptyCard(
+        icon: Icons.show_chart_rounded,
+        title: 'Evolução do saldo acumulado',
+        message: 'A evolução aparecerá quando houver lançamentos cadastrados.',
+      );
+    }
+
     final points = _buildBalanceEvolutionData(transactions);
     final values = points.map((item) => item.balance).toList();
 
@@ -604,12 +741,12 @@ class _BalanceEvolutionChart extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              'Veja como o saldo acumulado (receitas - despesas) evoluiu nos últimos 6 meses',
+              'Veja como o saldo disponível evoluiu nos últimos 6 meses',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 18),
             SizedBox(
-              height: 245,
+              height: MediaQuery.sizeOf(context).width < 400 ? 220 : 245,
               child: LineChart(
                 LineChartData(
                   minY: minY,
@@ -669,7 +806,8 @@ class _BalanceEvolutionChart extends StatelessWidget {
                           final index = spot.x.toInt();
                           final point = points[index];
                           return LineTooltipItem(
-                            '${point.label}\nSaldo acumulado\n${_currency(point.balance)}',
+                            '${_monthLong(point.month)} ${point.year}\n'
+                            'Saldo: ${_currency(point.balance)}',
                             const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w800,
@@ -714,6 +852,8 @@ class _BalanceEvolutionChart extends StatelessWidget {
                 curve: Curves.easeOutCubic,
               ),
             ),
+            const SizedBox(height: 12),
+            _BalanceCompactSummary(points: points),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -721,7 +861,9 @@ class _BalanceEvolutionChart extends StatelessWidget {
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    'Passe o mouse ou toque nos pontos para ver o saldo acumulado de cada mês.',
+                    kIsWeb
+                        ? 'Passe o mouse ou toque nos pontos para ver o saldo acumulado de cada mês.'
+                        : 'Toque nos pontos para consultar o saldo de cada mês.',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
@@ -730,6 +872,53 @@ class _BalanceEvolutionChart extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _BalanceCompactSummary extends StatelessWidget {
+  const _BalanceCompactSummary({required this.points});
+  final List<_BalanceEvolutionPoint> points;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: points
+          .map(
+            (point) => Container(
+              width: MediaQuery.sizeOf(context).width < 400 ? 94 : 132,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+              decoration: BoxDecoration(
+                color: _investmentColor.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${point.label}/${point.year}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  FittedBox(
+                    child: Text(
+                      _currency(point.balance),
+                      style: const TextStyle(
+                        color: _investmentColor,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+          .toList(),
     );
   }
 }
@@ -765,7 +954,7 @@ List<_MonthlySavingsRatePoint> _buildMonthlySavingsRateData(
     for (final item in items) {
       if (item.isIncome) {
         income += item.amount;
-      } else {
+      } else if (item.isExpense) {
         expenses += item.amount;
       }
     }
@@ -792,6 +981,16 @@ class _MonthlySavingsRateChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final points = _buildMonthlySavingsRateData(transactions);
+
+    if (!points.any((item) => item.hasIncome)) {
+      return const _ChartEmptyCard(
+        icon: Icons.savings_outlined,
+        title: 'Taxa de economia mensal',
+        message:
+            'A taxa será calculada quando houver receitas cadastradas nos últimos 6 meses.',
+      );
+    }
+
     final rates = points.map((item) => item.rate).toList();
     final minRate = rates.reduce((a, b) => a < b ? a : b);
     final maxRate = rates.reduce((a, b) => a > b ? a : b);
@@ -826,7 +1025,7 @@ class _MonthlySavingsRateChart extends StatelessWidget {
             ),
             const SizedBox(height: 18),
             SizedBox(
-              height: 245,
+              height: MediaQuery.sizeOf(context).width < 400 ? 220 : 245,
               child: BarChart(
                 BarChartData(
                   minY: minY,
@@ -940,20 +1139,20 @@ class _MonthlySavingsRateChart extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            Row(
+            const Wrap(
+              spacing: 14,
+              runSpacing: 8,
               children: [
                 _SavingsRateLegend(
-                  color: const Color(0xFF16A34A),
+                  color: Color(0xFF16A34A),
                   label: 'Economia positiva',
                 ),
-                const SizedBox(width: 14),
                 _SavingsRateLegend(
-                  color: const Color(0xFFDC2626),
+                  color: Color(0xFFDC2626),
                   label: 'Gastos acima da renda',
                 ),
-                const SizedBox(width: 14),
                 _SavingsRateLegend(
-                  color: const Color(0xFF94A3B8),
+                  color: Color(0xFF94A3B8),
                   label: 'Sem receita',
                 ),
               ],
@@ -973,29 +1172,26 @@ class _SavingsRateLegend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Flexible(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(3),
-            ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(3),
           ),
-          const SizedBox(width: 5),
-          Flexible(
-            child: Text(
-              label,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(width: 5),
+        Text(
+          label,
+          maxLines: 1,
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+        ),
+      ],
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../planning/data/planning_repository.dart';
@@ -8,6 +9,7 @@ import '../../../planning/domain/monthly_budget.dart';
 import '../../../planning/presentation/pages/budget_form_page.dart';
 import '../../../planning/presentation/pages/goal_form_page.dart';
 import '../../data/financial_repository.dart';
+import '../../domain/financial_chart_calculations.dart';
 import '../../domain/financial_transaction.dart';
 import 'transaction_form_page.dart';
 
@@ -77,6 +79,7 @@ class _FinancialDashboardPageState extends State<FinancialDashboardPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isNarrowScreen = MediaQuery.sizeOf(context).width < 600;
     final tabs = [
       _OverviewTab(
         financialRepository: _financialRepository,
@@ -113,31 +116,55 @@ class _FinancialDashboardPageState extends State<FinancialDashboardPage> {
         ],
       ),
       body: IndexedStack(index: _index, children: tabs),
-      floatingActionButton: _index <= 1
+      floatingActionButton: _index <= 1 && !isNarrowScreen
           ? FloatingActionButton.extended(
               onPressed: () => _openTransactionForm(),
               icon: const Icon(Icons.add),
               label: const Text('Novo lançamento'),
             )
           : null,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (value) => setState(() => _index = value),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
-            label: 'Resumo',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
-            selectedIcon: Icon(Icons.receipt_long),
-            label: 'Lançamentos',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.flag_outlined),
-            selectedIcon: Icon(Icons.flag),
-            label: 'Planejamento',
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_index <= 1 && isNarrowScreen)
+            Material(
+              color: Theme.of(context).colorScheme.surface,
+              elevation: 8,
+              shadowColor: Colors.black.withValues(alpha: 0.08),
+              child: SafeArea(
+                top: false,
+                bottom: false,
+                minimum: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => _openTransactionForm(),
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('Novo lançamento'),
+                  ),
+                ),
+              ),
+            ),
+          NavigationBar(
+            selectedIndex: _index,
+            onDestinationSelected: (value) => setState(() => _index = value),
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.dashboard_outlined),
+                selectedIcon: Icon(Icons.dashboard),
+                label: 'Resumo',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.receipt_long_outlined),
+                selectedIcon: Icon(Icons.receipt_long),
+                label: 'Lançamentos',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.flag_outlined),
+                selectedIcon: Icon(Icons.flag),
+                label: 'Planejamento',
+              ),
+            ],
           ),
         ],
       ),
@@ -231,35 +258,28 @@ class _OverviewTab extends StatelessWidget {
           forecast: forecast,
         );
         return ListView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
           children: [
-            Text(
-              'Olá, $firstName!',
-              style: Theme.of(
-                context,
-              ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
+            _HeroBalanceCard(
+              firstName: firstName,
+              balance: balance,
+              savingsRate: savingsRate,
             ),
-            const SizedBox(height: 4),
-            const Text('Seu panorama financeiro em um só lugar.'),
-            const SizedBox(height: 20),
-            _HeroBalanceCard(balance: balance, savingsRate: savingsRate),
             const SizedBox(height: 12),
-            Row(
+            _ResponsiveCardRow(
+              minChildWidth: 220,
               children: [
-                Expanded(
-                  child: _MetricCard(
-                    title: 'Receitas do mês',
-                    value: _currency(monthIncome),
-                    icon: Icons.trending_up,
-                  ),
+                _MetricCard(
+                  title: 'Receitas do mês',
+                  value: _currency(monthIncome),
+                  icon: Icons.trending_up,
+                  color: _incomeColor,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _MetricCard(
-                    title: 'Despesas do mês',
-                    value: _currency(monthExpenses),
-                    icon: Icons.trending_down,
-                  ),
+                _MetricCard(
+                  title: 'Despesas do mês',
+                  value: _currency(monthExpenses),
+                  icon: Icons.trending_down,
+                  color: _expenseColor,
                 ),
               ],
             ),
@@ -277,50 +297,44 @@ class _OverviewTab extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    Row(
+                    _ResponsiveCardRow(
+                      minChildWidth: 190,
                       children: [
-                        Expanded(
-                          child: _MetricCard(
-                            title: 'Sobra antes de investir',
-                            value: _currency(availableBeforeInvest),
-                            icon: Icons.account_balance_wallet_outlined,
-                          ),
+                        _MetricCard(
+                          title: 'Sobra antes de investir',
+                          value: _currency(availableBeforeInvest),
+                          icon: Icons.account_balance_wallet_outlined,
+                          color: _investmentColor,
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _MetricCard(
-                            title: 'Investido no mês',
-                            value: _currency(monthInvestments),
-                            icon: Icons.savings_outlined,
-                          ),
+                        _MetricCard(
+                          title: 'Investido no mês',
+                          value: _currency(monthInvestments),
+                          icon: Icons.savings_outlined,
+                          color: _investmentColor,
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _MetricCard(
-                            title: 'Resgatado no mês',
-                            value: _currency(monthRedemptions),
-                            icon: Icons.account_balance_wallet_outlined,
-                          ),
+                        _MetricCard(
+                          title: 'Resgatado no mês',
+                          value: _currency(monthRedemptions),
+                          icon: Icons.account_balance_wallet_outlined,
+                          color: _redemptionColor,
                         ),
                       ],
                     ),
                     const SizedBox(height: 12),
-                    Row(
+                    _ResponsiveCardRow(
+                      minChildWidth: 220,
                       children: [
-                        Expanded(
-                          child: _MetricCard(
-                            title: 'Total investido',
-                            value: _currency(totalInvestments),
-                            icon: Icons.savings_outlined,
-                          ),
+                        _MetricCard(
+                          title: 'Total investido',
+                          value: _currency(totalInvestments),
+                          icon: Icons.savings_outlined,
+                          color: _investmentColor,
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _MetricCard(
-                            title: 'Ainda disponível',
-                            value: _currency(availableToInvest),
-                            icon: Icons.trending_up,
-                          ),
+                        _MetricCard(
+                          title: 'Ainda disponível',
+                          value: _currency(availableToInvest),
+                          icon: Icons.trending_up,
+                          color: _incomeColor,
                         ),
                       ],
                     ),
@@ -329,6 +343,12 @@ class _OverviewTab extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
+            _IncomeExpenseBarChart(transactions: transactions),
+            const SizedBox(height: 12),
+            _BalanceEvolutionChart(transactions: transactions),
+            const SizedBox(height: 12),
+            _MonthlySavingsRateChart(transactions: transactions),
+            const SizedBox(height: 16),
             _MonthComparisonCard(transactions: transactions),
             const SizedBox(height: 16),
             _MonthlyConsolidatedReportCard(transactions: monthItems),
@@ -336,14 +356,6 @@ class _OverviewTab extends StatelessWidget {
             _ExpenseCategoryComparisonCard(transactions: transactions),
             const SizedBox(height: 16),
             _FinancialTrendsCard(transactions: transactions),
-            const SizedBox(height: 16),
-            _IncomeExpenseBarChart(transactions: transactions),
-
-            const SizedBox(height: 12),
-            _BalanceEvolutionChart(transactions: transactions),
-
-            const SizedBox(height: 12),
-            _MonthlySavingsRateChart(transactions: transactions),
             const SizedBox(height: 16),
             _FinancialDiagnosisCard(diagnosis: diagnosis),
 
@@ -462,24 +474,20 @@ class _TransactionsTabState extends State<_TransactionsTab> {
         }
 
         var items = snapshot.data!;
-        if (_filter == 'Receitas') {
-          items = items.where((item) => item.isIncome).toList();
-        } else if (_filter == 'Despesas') {
-          items = items.where((item) => item.isExpense).toList();
-        }
+        items = switch (_filter) {
+          'Receitas' => items.where((item) => item.isIncome).toList(),
+          'Despesas' => items.where((item) => item.isExpense).toList(),
+          'Investimentos' => items.where((item) => item.isInvestment).toList(),
+          'Resgates' => items.where((item) => item.isRedemption).toList(),
+          _ => items,
+        };
 
         return ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
           children: [
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'Todos', label: Text('Todos')),
-                ButtonSegment(value: 'Receitas', label: Text('Receitas')),
-                ButtonSegment(value: 'Despesas', label: Text('Despesas')),
-              ],
-              selected: {_filter},
-              onSelectionChanged: (value) =>
-                  setState(() => _filter = value.first),
+            _TransactionFilter(
+              selected: _filter,
+              onSelected: (value) => setState(() => _filter = value),
             ),
             const SizedBox(height: 18),
             if (items.isEmpty)
@@ -492,28 +500,38 @@ class _TransactionsTabState extends State<_TransactionsTab> {
               ...items.map(
                 (transaction) => Card(
                   child: ListTile(
-                    leading: CircleAvatar(
-                      child: Icon(
-                        transaction.isIncome
-                            ? Icons.arrow_downward
-                            : Icons.arrow_upward,
-                      ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 3,
                     ),
-                    title: Text(transaction.description),
+                    leading: CircleAvatar(
+                      backgroundColor: _transactionSoftColor(transaction.type),
+                      foregroundColor: _transactionColor(transaction.type),
+                      child: Icon(_transactionIcon(transaction.type)),
+                    ),
+                    title: Text(
+                      transaction.description,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
                     subtitle: Text(
                       '${transaction.category} • ${_date(transaction.date)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    trailing: Text(
-                      _currency(
-                        transaction.isIncome
-                            ? transaction.amount
-                            : -transaction.amount,
-                      ),
-                      style: TextStyle(
-                        color: transaction.isIncome
-                            ? const Color(0xFF16A34A)
-                            : const Color(0xFFDC2626),
-                        fontWeight: FontWeight.w800,
+                    trailing: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 128),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          '${_transactionSign(transaction.type)}${_currency(transaction.amount)}',
+                          style: TextStyle(
+                            color: _transactionColor(transaction.type),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
                       ),
                     ),
                     onTap: () => widget.onOpen(transaction),
@@ -526,6 +544,132 @@ class _TransactionsTabState extends State<_TransactionsTab> {
     );
   }
 }
+
+class _TransactionFilter extends StatelessWidget {
+  const _TransactionFilter({required this.selected, required this.onSelected});
+
+  final String selected;
+  final ValueChanged<String> onSelected;
+
+  static const _labels = [
+    'Todos',
+    'Receitas',
+    'Despesas',
+    'Investimentos',
+    'Resgates',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final selectedColor = _filterColor(context, selected);
+    final neutralTextColor = theme.colorScheme.onSurfaceVariant;
+    final neutralBackgroundColor = theme.colorScheme.surfaceContainerLow;
+    final neutralBorderColor = theme.colorScheme.outlineVariant;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >= 760) {
+          return SegmentedButton<String>(
+            segments: _labels
+                .map(
+                  (label) => ButtonSegment(
+                    value: label,
+                    label: Text(label, maxLines: 1),
+                  ),
+                )
+                .toList(),
+            selected: {selected},
+            onSelectionChanged: (value) => onSelected(value.first),
+            selectedIcon: const Icon(Icons.check, size: 18),
+            style: ButtonStyle(
+              foregroundColor: WidgetStateProperty.resolveWith(
+                (states) => states.contains(WidgetState.selected)
+                    ? selectedColor
+                    : neutralTextColor,
+              ),
+              backgroundColor: WidgetStateProperty.resolveWith(
+                (states) => states.contains(WidgetState.selected)
+                    ? selectedColor.withValues(alpha: 0.12)
+                    : neutralBackgroundColor,
+              ),
+              side: WidgetStateProperty.resolveWith(
+                (states) => BorderSide(
+                  color: states.contains(WidgetState.selected)
+                      ? selectedColor.withValues(alpha: 0.45)
+                      : neutralBorderColor,
+                ),
+              ),
+            ),
+          );
+        }
+
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _labels.map((label) {
+            final isSelected = selected == label;
+            final color = _filterColor(context, label);
+
+            return FilterChip(
+              label: Text(label, maxLines: 1),
+              selected: isSelected,
+              showCheckmark: true,
+              checkmarkColor: color,
+              selectedColor: color.withValues(alpha: 0.12),
+              backgroundColor: neutralBackgroundColor,
+              labelStyle: TextStyle(
+                color: isSelected ? color : neutralTextColor,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+              ),
+              side: BorderSide(
+                color: isSelected
+                    ? color.withValues(alpha: 0.45)
+                    : neutralBorderColor,
+              ),
+              onSelected: (_) => onSelected(label),
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+}
+
+const _incomeColor = Color(0xFF15803D);
+const _expenseColor = Color(0xFFDC2626);
+const _investmentColor = Color(0xFF2563EB);
+const _redemptionColor = Color(0xFF7C3AED);
+
+Color _transactionColor(TransactionType type) => switch (type) {
+  TransactionType.income => _incomeColor,
+  TransactionType.expense => _expenseColor,
+  TransactionType.investment => _investmentColor,
+  TransactionType.redemption => _redemptionColor,
+};
+
+Color _transactionSoftColor(TransactionType type) =>
+    _transactionColor(type).withValues(alpha: 0.12);
+
+Color _filterColor(BuildContext context, String label) => switch (label) {
+  'Receitas' => _incomeColor,
+  'Despesas' => _expenseColor,
+  'Investimentos' => _investmentColor,
+  'Resgates' => _redemptionColor,
+  _ => Theme.of(context).colorScheme.primary,
+};
+
+IconData _transactionIcon(TransactionType type) => switch (type) {
+  TransactionType.income => Icons.arrow_downward,
+  TransactionType.expense => Icons.arrow_upward,
+  TransactionType.investment => Icons.savings_outlined,
+  TransactionType.redemption => Icons.account_balance_wallet_outlined,
+};
+
+String _transactionSign(TransactionType type) => switch (type) {
+  TransactionType.income || TransactionType.redemption => '+',
+  TransactionType.expense || TransactionType.investment => '-',
+};
 
 class _PlanningTab extends StatelessWidget {
   const _PlanningTab({
@@ -555,7 +699,7 @@ class _PlanningTab extends StatelessWidget {
             transactionSnapshot.data ?? const <FinancialTransaction>[];
 
         return ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
           children: [
             Row(
               children: [
@@ -645,170 +789,188 @@ class _PlanningTab extends StatelessWidget {
                         : const Color(0xFF16A34A);
 
                     return Card(
-                      child: ListTile(
-                        title: Text(budget.category),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 6),
-                            LinearProgressIndicator(
-                              value: progress,
-                              color: progressColor,
+                      child: Stack(
+                        children: [
+                          ListTile(
+                            title: Padding(
+                              padding: const EdgeInsets.only(right: 88),
+                              child: Text(budget.category),
                             ),
-                            const SizedBox(height: 6),
-                            Wrap(
-                              spacing: 14,
-                              runSpacing: 4,
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  'Gasto: ${_currency(spent)}',
-                                  style: const TextStyle(
-                                    color: Color(0xFFDC2626),
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                                const SizedBox(height: 6),
+                                LinearProgressIndicator(
+                                  value: progress,
+                                  color: progressColor,
                                 ),
-                                Text(
-                                  'Limite: ${_currency(budget.limit)}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                Text(
-                                  'Usado: $percentUsed%',
-                                  style: TextStyle(
-                                    color: progressColor,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              exceeded
-                                  ? 'Saldo disponível: ${_currency(0)}'
-                                  : 'Saldo disponível: ${_currency(remaining)}',
-                              style: TextStyle(
-                                color: exceeded
-                                    ? const Color(0xFFDC2626)
-                                    : const Color(0xFF16A34A),
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: progressColor.withValues(alpha: 0.10),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    ratio >= 1
-                                        ? Icons.error_outline_rounded
-                                        : ratio >= 0.8
-                                        ? Icons.warning_amber_rounded
-                                        : Icons.check_circle_outline_rounded,
-                                    color: progressColor,
-                                    size: 18,
-                                  ),
-                                  const SizedBox(width: 7),
-                                  Expanded(
-                                    child: Text(
-                                      ratio >= 1
-                                          ? 'Orçamento excedido em ${_currency(excess)}'
-                                          : ratio >= 0.8
-                                          ? 'Atenção: você já utilizou $percentUsed% deste orçamento'
-                                          : 'Dentro do orçamento',
+                                const SizedBox(height: 6),
+                                Wrap(
+                                  spacing: 14,
+                                  runSpacing: 4,
+                                  children: [
+                                    Text(
+                                      'Gasto: ${_currency(spent)}',
+                                      style: const TextStyle(
+                                        color: Color(0xFFDC2626),
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Limite: ${_currency(budget.limit)}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Usado: $percentUsed%',
                                       style: TextStyle(
                                         color: progressColor,
                                         fontWeight: FontWeight.w800,
                                       ),
                                     ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  exceeded
+                                      ? 'Saldo disponível: ${_currency(0)}'
+                                      : 'Saldo disponível: ${_currency(remaining)}',
+                                  style: TextStyle(
+                                    color: exceeded
+                                        ? const Color(0xFFDC2626)
+                                        : const Color(0xFF16A34A),
+                                    fontWeight: FontWeight.w800,
                                   ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              tooltip: 'Editar orçamento',
-                              onPressed: () => onOpenBudget(budget),
-                              icon: const Icon(Icons.edit_outlined),
-                            ),
-                            IconButton(
-                              tooltip: 'Excluir orçamento',
-                              icon: const Icon(
-                                Icons.delete_outline_rounded,
-                                color: Color(0xFFDC2626),
-                              ),
-                              onPressed: () async {
-                                final confirmed = await showDialog<bool>(
-                                  context: context,
-                                  builder: (dialogContext) => AlertDialog(
-                                    title: const Text(
-                                      'Excluir este orçamento?',
+                                ),
+                                const SizedBox(height: 6),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: progressColor.withValues(
+                                      alpha: 0.10,
                                     ),
-                                    content: Text(
-                                      'O orçamento de "${budget.category}" será excluído deste mês.',
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () => Navigator.of(
-                                          dialogContext,
-                                        ).pop(false),
-                                        child: const Text('Cancelar'),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        ratio >= 1
+                                            ? Icons.error_outline_rounded
+                                            : ratio >= 0.8
+                                            ? Icons.warning_amber_rounded
+                                            : Icons
+                                                  .check_circle_outline_rounded,
+                                        color: progressColor,
+                                        size: 18,
                                       ),
-                                      FilledButton(
-                                        onPressed: () => Navigator.of(
-                                          dialogContext,
-                                        ).pop(true),
-                                        style: FilledButton.styleFrom(
-                                          backgroundColor: const Color(
-                                            0xFFDC2626,
+                                      const SizedBox(width: 7),
+                                      Expanded(
+                                        child: Text(
+                                          ratio >= 1
+                                              ? 'Orçamento excedido em ${_currency(excess)}'
+                                              : ratio >= 0.8
+                                              ? 'Atenção: você já utilizou $percentUsed% deste orçamento'
+                                              : 'Dentro do orçamento',
+                                          style: TextStyle(
+                                            color: progressColor,
+                                            fontWeight: FontWeight.w800,
                                           ),
                                         ),
-                                        child: const Text('Excluir'),
                                       ),
                                     ],
                                   ),
-                                );
-
-                                if (confirmed != true) return;
-
-                                try {
-                                  await planningRepository.deleteBudget(
-                                    budget.id,
-                                  );
-                                  if (!context.mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Orçamento excluído com sucesso.',
-                                      ),
-                                    ),
-                                  );
-                                } catch (error) {
-                                  if (!context.mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        'Não foi possível excluir o orçamento: $error',
-                                      ),
-                                    ),
-                                  );
-                                }
-                              },
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                          ),
+                          Positioned(
+                            top: 0,
+                            right: 0,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  tooltip: 'Editar orçamento',
+                                  onPressed: () => onOpenBudget(budget),
+                                  icon: const Icon(Icons.edit_outlined),
+                                ),
+                                IconButton(
+                                  tooltip: 'Excluir orçamento',
+                                  icon: const Icon(
+                                    Icons.delete_outline_rounded,
+                                    color: Color(0xFFDC2626),
+                                  ),
+                                  onPressed: () async {
+                                    final confirmed = await showDialog<bool>(
+                                      context: context,
+                                      builder: (dialogContext) => AlertDialog(
+                                        title: const Text(
+                                          'Excluir este orçamento?',
+                                        ),
+                                        content: Text(
+                                          'O orçamento de "${budget.category}" será excluído deste mês.',
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.of(
+                                              dialogContext,
+                                            ).pop(false),
+                                            child: const Text('Cancelar'),
+                                          ),
+                                          FilledButton(
+                                            onPressed: () => Navigator.of(
+                                              dialogContext,
+                                            ).pop(true),
+                                            style: FilledButton.styleFrom(
+                                              backgroundColor: const Color(
+                                                0xFFDC2626,
+                                              ),
+                                            ),
+                                            child: const Text('Excluir'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+
+                                    if (confirmed != true) return;
+
+                                    try {
+                                      await planningRepository.deleteBudget(
+                                        budget.id,
+                                      );
+                                      if (!context.mounted) return;
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'Orçamento excluído com sucesso.',
+                                          ),
+                                        ),
+                                      );
+                                    } catch (error) {
+                                      if (!context.mounted) return;
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Não foi possível excluir o orçamento: $error',
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     );
                   }).toList(),

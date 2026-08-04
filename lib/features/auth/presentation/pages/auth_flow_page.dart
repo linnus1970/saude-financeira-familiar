@@ -66,21 +66,19 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _recoverPassword() async {
-    final email = _email.text.trim();
+    final sent = await showDialog<bool>(
+      context: context,
+      builder: (context) => PasswordResetDialog(
+        initialEmail: _email.text.trim(),
+        sendResetEmail: (email) =>
+            FirebaseAuth.instance.sendPasswordResetEmail(email: email),
+      ),
+    );
 
-    if (email.isEmpty || !email.contains('@')) {
-      _show('Digite um e-mail válido no campo acima.');
-      return;
-    }
-
-    try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-
-      if (mounted) {
-        _show('Instruções enviadas para $email.');
-      }
-    } on FirebaseAuthException catch (error) {
-      if (mounted) _show(_messageFor(error));
+    if (sent == true && mounted) {
+      _show(
+        'Se houver uma conta para esse e-mail, enviaremos as instruções de recuperação.',
+      );
     }
   }
 
@@ -221,6 +219,144 @@ class _LoginPageState extends State<LoginPage> {
       ),
     );
   }
+}
+
+class PasswordResetDialog extends StatefulWidget {
+  const PasswordResetDialog({
+    required this.sendResetEmail,
+    this.initialEmail = '',
+    super.key,
+  });
+
+  final String initialEmail;
+  final Future<void> Function(String email) sendResetEmail;
+
+  @override
+  State<PasswordResetDialog> createState() => _PasswordResetDialogState();
+}
+
+class _PasswordResetDialogState extends State<PasswordResetDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _email;
+  bool _sending = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _email = TextEditingController(text: widget.initialEmail);
+  }
+
+  @override
+  void dispose() {
+    _email.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
+
+    try {
+      await widget.sendResetEmail(_email.text.trim());
+      if (mounted) Navigator.of(context).pop(true);
+    } on FirebaseAuthException catch (error) {
+      if (!mounted) return;
+      if (error.code == 'user-not-found') {
+        Navigator.of(context).pop(true);
+        return;
+      }
+      setState(() {
+        _error = switch (error.code) {
+          'invalid-email' => 'Informe um endereço de e-mail válido.',
+          'too-many-requests' =>
+            'Muitas tentativas. Aguarde alguns minutos e tente novamente.',
+          'network-request-failed' =>
+            'Não foi possível conectar. Verifique sua internet.',
+          _ => 'Não foi possível enviar agora. Tente novamente mais tarde.',
+        };
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _error = 'Não foi possível enviar agora. Tente novamente mais tarde.';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Recuperar senha'),
+      content: SizedBox(
+        width: 380,
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Informe seu e-mail para receber as instruções de recuperação.',
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _email,
+                enabled: !_sending,
+                autofocus: true,
+                keyboardType: TextInputType.emailAddress,
+                autofillHints: const [AutofillHints.email],
+                decoration: const InputDecoration(
+                  labelText: 'E-mail',
+                  prefixIcon: Icon(Icons.email_outlined),
+                  border: OutlineInputBorder(),
+                ),
+                validator: validateResetEmail,
+                onFieldSubmitted: (_) => _sending ? null : _send(),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _sending ? null : () => Navigator.of(context).pop(false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _sending ? null : _send,
+          child: _sending
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Enviar'),
+        ),
+      ],
+    );
+  }
+}
+
+String? validateResetEmail(String? value) {
+  final email = value?.trim() ?? '';
+  if (email.isEmpty) return 'Informe seu e-mail.';
+  final validEmail = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
+  if (!validEmail.hasMatch(email)) return 'Informe um e-mail válido.';
+  return null;
 }
 
 class RegisterPage extends StatefulWidget {

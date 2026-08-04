@@ -203,48 +203,102 @@ class _DiagnosticChip extends StatelessWidget {
 }
 
 class _HeroBalanceCard extends StatelessWidget {
-  const _HeroBalanceCard({required this.balance, required this.savingsRate});
+  const _HeroBalanceCard({
+    required this.firstName,
+    required this.balance,
+    required this.savingsRate,
+  });
 
+  final String firstName;
   final double balance;
   final double savingsRate;
 
   @override
   Widget build(BuildContext context) {
+    final isNegative = balance < 0;
+    final backgroundColor = isNegative
+        ? const Color(0xFFB42318)
+        : const Color(0xFF155EEF);
     return Card(
       elevation: 0,
-      color: Theme.of(context).colorScheme.primaryContainer,
+      color: backgroundColor,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Padding(
-        padding: const EdgeInsets.all(22),
-        child: Row(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Saldo total'),
-                  const SizedBox(height: 8),
-                  FittedBox(
-                    child: Text(
-                      _currency(balance),
-                      style: Theme.of(context).textTheme.headlineMedium
-                          ?.copyWith(fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                ],
+            Text(
+              'Olá, $firstName',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(width: 16),
-            Column(
-              children: [
-                const Text('Economia'),
-                const SizedBox(height: 8),
-                Text(
-                  '${savingsRate.toStringAsFixed(0)}%',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-                ),
-              ],
+            const SizedBox(height: 3),
+            Text(
+              'Visão geral das suas finanças',
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.78)),
+            ),
+            const SizedBox(height: 22),
+            Text(
+              'Saldo total',
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.78)),
+            ),
+            const SizedBox(height: 5),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final balanceText = FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _currency(balance),
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      color: Colors.white,
+                      fontSize: 32,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                );
+                final savingsBadge = Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'Economia ${savingsRate.toStringAsFixed(0)}%',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                );
+
+                if (constraints.maxWidth < 400) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(width: double.infinity, child: balanceText),
+                      const SizedBox(height: 10),
+                      savingsBadge,
+                    ],
+                  );
+                }
+
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(child: balanceText),
+                    const SizedBox(width: 14),
+                    savingsBadge,
+                  ],
+                );
+              },
             ),
           ],
         ),
@@ -258,36 +312,85 @@ class _MetricCard extends StatelessWidget {
     required this.title,
     required this.value,
     required this.icon,
+    required this.color,
   });
 
   final String title;
   final String value;
   final IconData icon;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
     return Card(
       elevation: 0,
+      color: color.withValues(alpha: 0.055),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: color.withValues(alpha: 0.24)),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(15),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon),
-            const SizedBox(height: 10),
-            Text(title),
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.11),
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: Icon(icon, color: color, size: 21),
+            ),
+            const SizedBox(height: 9),
+            Text(title, style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: 4),
             FittedBox(
               child: Text(
                 value,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                ),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ResponsiveCardRow extends StatelessWidget {
+  const _ResponsiveCardRow({
+    required this.children,
+    required this.minChildWidth,
+  });
+
+  final List<Widget> children;
+  final double minChildWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const spacing = 12.0;
+        final columns = (constraints.maxWidth / minChildWidth).floor().clamp(
+          1,
+          children.length,
+        );
+        final width =
+            (constraints.maxWidth - (spacing * (columns - 1))) / columns;
+
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: children
+              .map((child) => SizedBox(width: width, child: child))
+              .toList(),
+        );
+      },
     );
   }
 }

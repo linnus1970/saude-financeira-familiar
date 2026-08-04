@@ -386,65 +386,84 @@ class _ExpenseCategoryComparisonRow extends StatelessWidget {
       changeText = 'Aumento de ${_currency(delta)}';
     }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: accent, size: 20),
+    final categoryInfo = Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(12),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  category,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 3),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 3,
-                  children: [
-                    Text(
-                      '$previousLabel: ${_currency(previous)}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    Text(
-                      '$currentLabel: ${_currency(current)}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              changeText,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: accent,
-                fontWeight: FontWeight.w800,
+          child: Icon(icon, color: accent, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                category,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
-            ),
+              const SizedBox(height: 3),
+              Wrap(
+                spacing: 12,
+                runSpacing: 3,
+                children: [
+                  Text(
+                    '$previousLabel: ${_currency(previous)}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  Text(
+                    '$currentLabel: ${_currency(current)}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ],
           ),
-        ],
+        ),
+      ],
+    );
+    final changeBadge = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        changeText,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: accent,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: constraints.maxWidth < 430
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  categoryInfo,
+                  const SizedBox(height: 8),
+                  Align(alignment: Alignment.centerRight, child: changeBadge),
+                ],
+              )
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(child: categoryInfo),
+                  const SizedBox(width: 10),
+                  changeBadge,
+                ],
+              ),
       ),
     );
   }
@@ -863,7 +882,7 @@ class _MonthComparisonRow extends StatelessWidget {
         ? Icons.arrow_upward_rounded
         : Icons.arrow_downward_rounded;
 
-    return Row(
+    final comparisonInfo = Row(
       children: [
         Container(
           width: 38,
@@ -903,29 +922,47 @@ class _MonthComparisonRow extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(width: 10),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-          decoration: BoxDecoration(
-            color: accent.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(changeIcon, size: 15, color: accent),
-              const SizedBox(width: 3),
-              Text(
-                changeText,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: accent,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-        ),
       ],
+    );
+    final changeBadge = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(changeIcon, size: 15, color: accent),
+          const SizedBox(width: 3),
+          Text(
+            changeText,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: accent,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) => constraints.maxWidth < 430
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                comparisonInfo,
+                const SizedBox(height: 8),
+                Align(alignment: Alignment.centerRight, child: changeBadge),
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(child: comparisonInfo),
+                const SizedBox(width: 10),
+                changeBadge,
+              ],
+            ),
     );
   }
 }
