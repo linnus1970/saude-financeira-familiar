@@ -44,10 +44,23 @@ class _TransactionFormPageState extends State<TransactionFormPage> {
     'Outras despesas',
   ];
 
+  static const _investmentCategories = [
+    'Reserva de emergência',
+    'Renda fixa',
+    'Fundos',
+    'Ações',
+    'Previdência',
+    'Criptomoedas',
+    'Outros investimentos',
+  ];
+
   List<String> get _categories {
-    return _type == TransactionType.income
-        ? _incomeCategories
-        : _expenseCategories;
+    return switch (_type) {
+      TransactionType.income => _incomeCategories,
+      TransactionType.expense => _expenseCategories,
+      TransactionType.investment => _investmentCategories,
+      TransactionType.redemption => _investmentCategories,
+    };
   }
 
   @override
@@ -108,6 +121,20 @@ class _TransactionFormPageState extends State<TransactionFormPage> {
       final amount = double.parse(normalized);
       final current = widget.transaction;
 
+      if (_type == TransactionType.redemption) {
+        final available = await widget.repository.availableInvestmentAmount(
+          category: _category,
+          excludingTransactionId: current?.id,
+          upToDate: _date,
+        );
+
+        if (amount > available) {
+          throw StateError(
+            'Saldo disponível para resgate em $_category: R\$ ${available.toStringAsFixed(2).replaceAll('.', ',')}.',
+          );
+        }
+      }
+
       final transaction = FinancialTransaction(
         id: current?.id ?? '',
         description: _description.text.trim(),
@@ -155,23 +182,11 @@ class _TransactionFormPageState extends State<TransactionFormPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    SegmentedButton<TransactionType>(
-                      segments: const [
-                        ButtonSegment(
-                          value: TransactionType.income,
-                          label: Text('Receita'),
-                          icon: Icon(Icons.trending_up),
-                        ),
-                        ButtonSegment(
-                          value: TransactionType.expense,
-                          label: Text('Despesa'),
-                          icon: Icon(Icons.trending_down),
-                        ),
-                      ],
-                      selected: {_type},
-                      onSelectionChanged: (selection) {
+                    _TransactionTypeSelector(
+                      selected: _type,
+                      onSelected: (type) {
                         setState(() {
-                          _type = selection.first;
+                          _type = type;
                           _category = _categories.first;
                         });
                       },
@@ -196,9 +211,12 @@ class _TransactionFormPageState extends State<TransactionFormPage> {
                         decimal: true,
                       ),
                       style: TextStyle(
-                        color: _type == TransactionType.expense
-                            ? const Color(0xFFDC2626)
-                            : const Color(0xFF16A34A),
+                        color: switch (_type) {
+                          TransactionType.income => const Color(0xFF16A34A),
+                          TransactionType.expense => const Color(0xFFDC2626),
+                          TransactionType.investment => const Color(0xFF2563EB),
+                          TransactionType.redemption => const Color(0xFF7C3AED),
+                        },
                         fontWeight: FontWeight.w800,
                       ),
 
@@ -280,6 +298,105 @@ class _TransactionFormPageState extends State<TransactionFormPage> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _TransactionTypeSelector extends StatelessWidget {
+  const _TransactionTypeSelector({
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final TransactionType selected;
+  final ValueChanged<TransactionType> onSelected;
+
+  static const _items = <(TransactionType, String, IconData)>[
+    (TransactionType.income, 'Receita', Icons.trending_up),
+    (TransactionType.expense, 'Despesa', Icons.trending_down),
+    (TransactionType.investment, 'Investimento', Icons.savings_outlined),
+    (
+      TransactionType.redemption,
+      'Resgate',
+      Icons.account_balance_wallet_outlined,
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >= 620) {
+          return SegmentedButton<TransactionType>(
+            segments: _items
+                .map(
+                  (item) => ButtonSegment(
+                    value: item.$1,
+                    label: Text(item.$2, maxLines: 1),
+                    icon: Icon(item.$3),
+                  ),
+                )
+                .toList(),
+            selected: {selected},
+            onSelectionChanged: (selection) => onSelected(selection.first),
+          );
+        }
+
+        const spacing = 8.0;
+        final itemWidth = (constraints.maxWidth - spacing) / 2;
+
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: _items.map((item) {
+            final color = switch (item.$1) {
+              TransactionType.income => const Color(0xFF15803D),
+              TransactionType.expense => const Color(0xFFDC2626),
+              TransactionType.investment => const Color(0xFF2563EB),
+              TransactionType.redemption => const Color(0xFF7C3AED),
+            };
+            final isSelected = selected == item.$1;
+            return SizedBox(
+              width: itemWidth,
+              child: ChoiceChip(
+                avatar: Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: isSelected ? 0.16 : 0.08),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(item.$3, size: 17, color: color),
+                ),
+                label: SizedBox(
+                  width: double.infinity,
+                  child: Text(
+                    item.$2,
+                    maxLines: 1,
+                    overflow: TextOverflow.fade,
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                selected: isSelected,
+                selectedColor: color.withValues(alpha: 0.12),
+                backgroundColor: Theme.of(context).colorScheme.surface,
+                side: BorderSide(
+                  color: isSelected
+                      ? color
+                      : Theme.of(context).colorScheme.outlineVariant,
+                ),
+                labelStyle: TextStyle(
+                  color: isSelected
+                      ? color
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                ),
+                onSelected: (_) => onSelected(item.$1),
+              ),
+            );
+          }).toList(),
+        );
+      },
     );
   }
 }

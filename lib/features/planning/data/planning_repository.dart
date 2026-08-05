@@ -60,11 +60,64 @@ class PlanningRepository {
     }
   }
 
+  Future<void> deleteGoal(String id) async {
+    if (id.isEmpty) return;
+    await _goals.doc(id).delete();
+  }
+
   Future<void> saveBudget(MonthlyBudget budget) async {
+    final existing = await _budgets
+        .where('month', isEqualTo: budget.month)
+        .where('year', isEqualTo: budget.year)
+        .where('category', isEqualTo: budget.category)
+        .get();
+
+    final duplicateExists = existing.docs.any((doc) => doc.id != budget.id);
+
+    if (duplicateExists) {
+      throw StateError(
+        'Já existe um orçamento para ${budget.category} neste mês. '
+        'Edite o orçamento existente.',
+      );
+    }
+
     if (budget.id.isEmpty) {
       await _budgets.add(budget.toMap());
     } else {
       await _budgets.doc(budget.id).set(budget.toMap());
     }
+  }
+
+  Future<void> deleteBudget(String id) async {
+    if (id.isEmpty) return;
+    await _budgets.doc(id).delete();
+  }
+
+  Future<void> addGoalContribution({
+    required String goalId,
+    required double amount,
+  }) async {
+    if (goalId.isEmpty || amount <= 0) return;
+
+    final goalRef = _goals.doc(goalId);
+
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(goalRef);
+      final data = snapshot.data();
+
+      if (data == null) {
+        throw StateError('Meta não encontrada.');
+      }
+
+      final currentAmount = (data['currentAmount'] as num? ?? 0).toDouble();
+      final targetAmount = (data['targetAmount'] as num? ?? 0).toDouble();
+
+      final updatedAmount = (currentAmount + amount).clamp(
+        0.0,
+        targetAmount > 0 ? targetAmount : double.infinity,
+      );
+
+      transaction.update(goalRef, {'currentAmount': updatedAmount});
+    });
   }
 }

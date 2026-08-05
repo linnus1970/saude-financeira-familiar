@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../planning/data/planning_repository.dart';
@@ -8,8 +9,14 @@ import '../../../planning/domain/monthly_budget.dart';
 import '../../../planning/presentation/pages/budget_form_page.dart';
 import '../../../planning/presentation/pages/goal_form_page.dart';
 import '../../data/financial_repository.dart';
+import '../../domain/financial_chart_calculations.dart';
 import '../../domain/financial_transaction.dart';
 import 'transaction_form_page.dart';
+
+part 'financial_dashboard_intelligence.part.dart';
+part 'financial_dashboard_reports.part.dart';
+part 'financial_dashboard_charts.part.dart';
+part 'financial_dashboard_shared.part.dart';
 
 class FinancialDashboardPage extends StatefulWidget {
   const FinancialDashboardPage({super.key});
@@ -72,6 +79,7 @@ class _FinancialDashboardPageState extends State<FinancialDashboardPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isNarrowScreen = MediaQuery.sizeOf(context).width < 600;
     final tabs = [
       _OverviewTab(
         financialRepository: _financialRepository,
@@ -108,31 +116,55 @@ class _FinancialDashboardPageState extends State<FinancialDashboardPage> {
         ],
       ),
       body: IndexedStack(index: _index, children: tabs),
-      floatingActionButton: _index <= 1
+      floatingActionButton: _index <= 1 && !isNarrowScreen
           ? FloatingActionButton.extended(
               onPressed: () => _openTransactionForm(),
               icon: const Icon(Icons.add),
               label: const Text('Novo lançamento'),
             )
           : null,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (value) => setState(() => _index = value),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
-            label: 'Resumo',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
-            selectedIcon: Icon(Icons.receipt_long),
-            label: 'Lançamentos',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.flag_outlined),
-            selectedIcon: Icon(Icons.flag),
-            label: 'Planejamento',
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_index <= 1 && isNarrowScreen)
+            Material(
+              color: Theme.of(context).colorScheme.surface,
+              elevation: 8,
+              shadowColor: Colors.black.withValues(alpha: 0.08),
+              child: SafeArea(
+                top: false,
+                bottom: false,
+                minimum: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => _openTransactionForm(),
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('Novo lançamento'),
+                  ),
+                ),
+              ),
+            ),
+          NavigationBar(
+            selectedIndex: _index,
+            onDestinationSelected: (value) => setState(() => _index = value),
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.dashboard_outlined),
+                selectedIcon: Icon(Icons.dashboard),
+                label: 'Resumo',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.receipt_long_outlined),
+                selectedIcon: Icon(Icons.receipt_long),
+                label: 'Lançamentos',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.flag_outlined),
+                selectedIcon: Icon(Icons.flag),
+                label: 'Planejamento',
+              ),
+            ],
           ),
         ],
       ),
@@ -178,6 +210,23 @@ class _OverviewTab extends StatelessWidget {
 
         final monthIncome = _sumIncome(monthItems);
         final monthExpenses = _sumExpenses(monthItems);
+        final monthInvestments = _sumInvestments(monthItems);
+        final monthRedemptions = _sumRedemptions(monthItems);
+        final totalInvestments =
+            _sumInvestments(transactions) - _sumRedemptions(transactions);
+        final monthStart = DateTime(now.year, now.month);
+        final previousItems = transactions
+            .where((item) => item.date.isBefore(monthStart))
+            .toList();
+        final carriedToMonth =
+            _sumIncome(previousItems) -
+            _sumExpenses(previousItems) -
+            _sumInvestments(previousItems) +
+            _sumRedemptions(previousItems);
+        final availableBeforeInvest =
+            carriedToMonth + monthIncome - monthExpenses;
+        final availableToInvest =
+            availableBeforeInvest - monthInvestments + monthRedemptions;
         final balance = _sumIncome(transactions) - _sumExpenses(transactions);
         final savingsRate = monthIncome <= 0
             ? 0.0
@@ -209,38 +258,96 @@ class _OverviewTab extends StatelessWidget {
           forecast: forecast,
         );
         return ListView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
           children: [
-            Text(
-              'Olá, $firstName!',
-              style: Theme.of(
-                context,
-              ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
+            _HeroBalanceCard(
+              firstName: firstName,
+              balance: balance,
+              savingsRate: savingsRate,
             ),
-            const SizedBox(height: 4),
-            const Text('Seu panorama financeiro em um só lugar.'),
-            const SizedBox(height: 20),
-            _HeroBalanceCard(balance: balance, savingsRate: savingsRate),
             const SizedBox(height: 12),
-            Row(
+            _ResponsiveCardRow(
+              minChildWidth: 220,
               children: [
-                Expanded(
-                  child: _MetricCard(
-                    title: 'Receitas do mês',
-                    value: _currency(monthIncome),
-                    icon: Icons.trending_up,
-                  ),
+                _MetricCard(
+                  title: 'Receitas do mês',
+                  value: _currency(monthIncome),
+                  icon: Icons.trending_up,
+                  color: _incomeColor,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _MetricCard(
-                    title: 'Despesas do mês',
-                    value: _currency(monthExpenses),
-                    icon: Icons.trending_down,
-                  ),
+                _MetricCard(
+                  title: 'Despesas do mês',
+                  value: _currency(monthExpenses),
+                  icon: Icons.trending_down,
+                  color: _expenseColor,
                 ),
               ],
             ),
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Investimentos',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _ResponsiveCardRow(
+                      minChildWidth: 190,
+                      children: [
+                        _MetricCard(
+                          title: 'Sobra antes de investir',
+                          value: _currency(availableBeforeInvest),
+                          icon: Icons.account_balance_wallet_outlined,
+                          color: _investmentColor,
+                        ),
+                        _MetricCard(
+                          title: 'Investido no mês',
+                          value: _currency(monthInvestments),
+                          icon: Icons.savings_outlined,
+                          color: _investmentColor,
+                        ),
+                        _MetricCard(
+                          title: 'Resgatado no mês',
+                          value: _currency(monthRedemptions),
+                          icon: Icons.account_balance_wallet_outlined,
+                          color: _redemptionColor,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    _ResponsiveCardRow(
+                      minChildWidth: 220,
+                      children: [
+                        _MetricCard(
+                          title: 'Total investido',
+                          value: _currency(totalInvestments),
+                          icon: Icons.savings_outlined,
+                          color: _investmentColor,
+                        ),
+                        _MetricCard(
+                          title: 'Ainda disponível',
+                          value: _currency(availableToInvest),
+                          icon: Icons.trending_up,
+                          color: _incomeColor,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _IncomeExpenseBarChart(transactions: transactions),
+            const SizedBox(height: 12),
+            _BalanceEvolutionChart(transactions: transactions),
+            const SizedBox(height: 12),
+            _MonthlySavingsRateChart(transactions: transactions),
             const SizedBox(height: 16),
             _MonthComparisonCard(transactions: transactions),
             const SizedBox(height: 16),
@@ -249,14 +356,6 @@ class _OverviewTab extends StatelessWidget {
             _ExpenseCategoryComparisonCard(transactions: transactions),
             const SizedBox(height: 16),
             _FinancialTrendsCard(transactions: transactions),
-            const SizedBox(height: 16),
-            _IncomeExpenseBarChart(transactions: transactions),
-
-            const SizedBox(height: 12),
-            _BalanceEvolutionChart(transactions: transactions),
-
-            const SizedBox(height: 12),
-            _MonthlySavingsRateChart(transactions: transactions),
             const SizedBox(height: 16),
             _FinancialDiagnosisCard(diagnosis: diagnosis),
 
@@ -375,24 +474,20 @@ class _TransactionsTabState extends State<_TransactionsTab> {
         }
 
         var items = snapshot.data!;
-        if (_filter == 'Receitas') {
-          items = items.where((item) => item.isIncome).toList();
-        } else if (_filter == 'Despesas') {
-          items = items.where((item) => !item.isIncome).toList();
-        }
+        items = switch (_filter) {
+          'Receitas' => items.where((item) => item.isIncome).toList(),
+          'Despesas' => items.where((item) => item.isExpense).toList(),
+          'Investimentos' => items.where((item) => item.isInvestment).toList(),
+          'Resgates' => items.where((item) => item.isRedemption).toList(),
+          _ => items,
+        };
 
         return ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
           children: [
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'Todos', label: Text('Todos')),
-                ButtonSegment(value: 'Receitas', label: Text('Receitas')),
-                ButtonSegment(value: 'Despesas', label: Text('Despesas')),
-              ],
-              selected: {_filter},
-              onSelectionChanged: (value) =>
-                  setState(() => _filter = value.first),
+            _TransactionFilter(
+              selected: _filter,
+              onSelected: (value) => setState(() => _filter = value),
             ),
             const SizedBox(height: 18),
             if (items.isEmpty)
@@ -405,28 +500,38 @@ class _TransactionsTabState extends State<_TransactionsTab> {
               ...items.map(
                 (transaction) => Card(
                   child: ListTile(
-                    leading: CircleAvatar(
-                      child: Icon(
-                        transaction.isIncome
-                            ? Icons.arrow_downward
-                            : Icons.arrow_upward,
-                      ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 3,
                     ),
-                    title: Text(transaction.description),
+                    leading: CircleAvatar(
+                      backgroundColor: _transactionSoftColor(transaction.type),
+                      foregroundColor: _transactionColor(transaction.type),
+                      child: Icon(_transactionIcon(transaction.type)),
+                    ),
+                    title: Text(
+                      transaction.description,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
                     subtitle: Text(
                       '${transaction.category} • ${_date(transaction.date)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    trailing: Text(
-                      _currency(
-                        transaction.isIncome
-                            ? transaction.amount
-                            : -transaction.amount,
-                      ),
-                      style: TextStyle(
-                        color: transaction.isIncome
-                            ? const Color(0xFF16A34A)
-                            : const Color(0xFFDC2626),
-                        fontWeight: FontWeight.w800,
+                    trailing: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 128),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          '${_transactionSign(transaction.type)}${_currency(transaction.amount)}',
+                          style: TextStyle(
+                            color: _transactionColor(transaction.type),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
                       ),
                     ),
                     onTap: () => widget.onOpen(transaction),
@@ -439,6 +544,132 @@ class _TransactionsTabState extends State<_TransactionsTab> {
     );
   }
 }
+
+class _TransactionFilter extends StatelessWidget {
+  const _TransactionFilter({required this.selected, required this.onSelected});
+
+  final String selected;
+  final ValueChanged<String> onSelected;
+
+  static const _labels = [
+    'Todos',
+    'Receitas',
+    'Despesas',
+    'Investimentos',
+    'Resgates',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final selectedColor = _filterColor(context, selected);
+    final neutralTextColor = theme.colorScheme.onSurfaceVariant;
+    final neutralBackgroundColor = theme.colorScheme.surfaceContainerLow;
+    final neutralBorderColor = theme.colorScheme.outlineVariant;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >= 760) {
+          return SegmentedButton<String>(
+            segments: _labels
+                .map(
+                  (label) => ButtonSegment(
+                    value: label,
+                    label: Text(label, maxLines: 1),
+                  ),
+                )
+                .toList(),
+            selected: {selected},
+            onSelectionChanged: (value) => onSelected(value.first),
+            selectedIcon: const Icon(Icons.check, size: 18),
+            style: ButtonStyle(
+              foregroundColor: WidgetStateProperty.resolveWith(
+                (states) => states.contains(WidgetState.selected)
+                    ? selectedColor
+                    : neutralTextColor,
+              ),
+              backgroundColor: WidgetStateProperty.resolveWith(
+                (states) => states.contains(WidgetState.selected)
+                    ? selectedColor.withValues(alpha: 0.12)
+                    : neutralBackgroundColor,
+              ),
+              side: WidgetStateProperty.resolveWith(
+                (states) => BorderSide(
+                  color: states.contains(WidgetState.selected)
+                      ? selectedColor.withValues(alpha: 0.45)
+                      : neutralBorderColor,
+                ),
+              ),
+            ),
+          );
+        }
+
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _labels.map((label) {
+            final isSelected = selected == label;
+            final color = _filterColor(context, label);
+
+            return FilterChip(
+              label: Text(label, maxLines: 1),
+              selected: isSelected,
+              showCheckmark: true,
+              checkmarkColor: color,
+              selectedColor: color.withValues(alpha: 0.12),
+              backgroundColor: neutralBackgroundColor,
+              labelStyle: TextStyle(
+                color: isSelected ? color : neutralTextColor,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+              ),
+              side: BorderSide(
+                color: isSelected
+                    ? color.withValues(alpha: 0.45)
+                    : neutralBorderColor,
+              ),
+              onSelected: (_) => onSelected(label),
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+}
+
+const _incomeColor = Color(0xFF15803D);
+const _expenseColor = Color(0xFFDC2626);
+const _investmentColor = Color(0xFF2563EB);
+const _redemptionColor = Color(0xFF7C3AED);
+
+Color _transactionColor(TransactionType type) => switch (type) {
+  TransactionType.income => _incomeColor,
+  TransactionType.expense => _expenseColor,
+  TransactionType.investment => _investmentColor,
+  TransactionType.redemption => _redemptionColor,
+};
+
+Color _transactionSoftColor(TransactionType type) =>
+    _transactionColor(type).withValues(alpha: 0.12);
+
+Color _filterColor(BuildContext context, String label) => switch (label) {
+  'Receitas' => _incomeColor,
+  'Despesas' => _expenseColor,
+  'Investimentos' => _investmentColor,
+  'Resgates' => _redemptionColor,
+  _ => Theme.of(context).colorScheme.primary,
+};
+
+IconData _transactionIcon(TransactionType type) => switch (type) {
+  TransactionType.income => Icons.arrow_downward,
+  TransactionType.expense => Icons.arrow_upward,
+  TransactionType.investment => Icons.savings_outlined,
+  TransactionType.redemption => Icons.account_balance_wallet_outlined,
+};
+
+String _transactionSign(TransactionType type) => switch (type) {
+  TransactionType.income || TransactionType.redemption => '+',
+  TransactionType.expense || TransactionType.investment => '-',
+};
 
 class _PlanningTab extends StatelessWidget {
   const _PlanningTab({
@@ -468,7 +699,7 @@ class _PlanningTab extends StatelessWidget {
             transactionSnapshot.data ?? const <FinancialTransaction>[];
 
         return ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
           children: [
             Row(
               children: [
@@ -533,7 +764,7 @@ class _PlanningTab extends StatelessWidget {
                     final spent = transactions
                         .where(
                           (item) =>
-                              !item.isIncome &&
+                              item.isExpense &&
                               item.category == budget.category &&
                               item.date.month == budget.month &&
                               item.date.year == budget.year,
@@ -545,36 +776,201 @@ class _PlanningTab extends StatelessWidget {
                     final progress = ratio.clamp(0.0, 1.0);
                     final exceeded = spent > budget.limit;
                     final excess = exceeded ? spent - budget.limit : 0.0;
+                    final remaining = (budget.limit - spent).clamp(
+                      0.0,
+                      double.infinity,
+                    );
+                    final percentUsed = (ratio * 100).round();
+
+                    final Color progressColor = ratio >= 1
+                        ? const Color(0xFFDC2626)
+                        : ratio >= 0.8
+                        ? const Color(0xFFF59E0B)
+                        : const Color(0xFF16A34A);
 
                     return Card(
-                      child: ListTile(
-                        title: Text(budget.category),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 6),
-                            LinearProgressIndicator(value: progress),
-                            const SizedBox(height: 4),
-                            Text(
-                              '${_currency(spent)} de ${_currency(budget.limit)} (${(ratio * 100).round()}%)',
+                      child: Stack(
+                        children: [
+                          ListTile(
+                            title: Padding(
+                              padding: const EdgeInsets.only(right: 88),
+                              child: Text(budget.category),
                             ),
-                            if (exceeded) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                'Orçamento excedido em ${_currency(excess)}',
-                                style: TextStyle(
-                                  color: Theme.of(context).colorScheme.error,
-                                  fontWeight: FontWeight.w700,
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 6),
+                                LinearProgressIndicator(
+                                  value: progress,
+                                  color: progressColor,
                                 ),
-                              ),
-                            ],
-                          ],
-                        ),
-                        trailing: IconButton(
-                          tooltip: 'Editar',
-                          onPressed: () => onOpenBudget(budget),
-                          icon: const Icon(Icons.edit_outlined),
-                        ),
+                                const SizedBox(height: 6),
+                                Wrap(
+                                  spacing: 14,
+                                  runSpacing: 4,
+                                  children: [
+                                    Text(
+                                      'Gasto: ${_currency(spent)}',
+                                      style: const TextStyle(
+                                        color: Color(0xFFDC2626),
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Limite: ${_currency(budget.limit)}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Usado: $percentUsed%',
+                                      style: TextStyle(
+                                        color: progressColor,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  exceeded
+                                      ? 'Saldo disponível: ${_currency(0)}'
+                                      : 'Saldo disponível: ${_currency(remaining)}',
+                                  style: TextStyle(
+                                    color: exceeded
+                                        ? const Color(0xFFDC2626)
+                                        : const Color(0xFF16A34A),
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: progressColor.withValues(
+                                      alpha: 0.10,
+                                    ),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        ratio >= 1
+                                            ? Icons.error_outline_rounded
+                                            : ratio >= 0.8
+                                            ? Icons.warning_amber_rounded
+                                            : Icons
+                                                  .check_circle_outline_rounded,
+                                        color: progressColor,
+                                        size: 18,
+                                      ),
+                                      const SizedBox(width: 7),
+                                      Expanded(
+                                        child: Text(
+                                          ratio >= 1
+                                              ? 'Orçamento excedido em ${_currency(excess)}'
+                                              : ratio >= 0.8
+                                              ? 'Atenção: você já utilizou $percentUsed% deste orçamento'
+                                              : 'Dentro do orçamento',
+                                          style: TextStyle(
+                                            color: progressColor,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Positioned(
+                            top: 0,
+                            right: 0,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  tooltip: 'Editar orçamento',
+                                  onPressed: () => onOpenBudget(budget),
+                                  icon: const Icon(Icons.edit_outlined),
+                                ),
+                                IconButton(
+                                  tooltip: 'Excluir orçamento',
+                                  icon: const Icon(
+                                    Icons.delete_outline_rounded,
+                                    color: Color(0xFFDC2626),
+                                  ),
+                                  onPressed: () async {
+                                    final confirmed = await showDialog<bool>(
+                                      context: context,
+                                      builder: (dialogContext) => AlertDialog(
+                                        title: const Text(
+                                          'Excluir este orçamento?',
+                                        ),
+                                        content: Text(
+                                          'O orçamento de "${budget.category}" será excluído deste mês.',
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.of(
+                                              dialogContext,
+                                            ).pop(false),
+                                            child: const Text('Cancelar'),
+                                          ),
+                                          FilledButton(
+                                            onPressed: () => Navigator.of(
+                                              dialogContext,
+                                            ).pop(true),
+                                            style: FilledButton.styleFrom(
+                                              backgroundColor: const Color(
+                                                0xFFDC2626,
+                                              ),
+                                            ),
+                                            child: const Text('Excluir'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+
+                                    if (confirmed != true) return;
+
+                                    try {
+                                      await planningRepository.deleteBudget(
+                                        budget.id,
+                                      );
+                                      if (!context.mounted) return;
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'Orçamento excluído com sucesso.',
+                                          ),
+                                        ),
+                                      );
+                                    } catch (error) {
+                                      if (!context.mounted) return;
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Não foi possível excluir o orçamento: $error',
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     );
                   }).toList(),
@@ -634,7 +1030,143 @@ class _PlanningTab extends StatelessWidget {
                                       ),
                                     ),
                                   ),
-                                  Text('${(goal.progress * 100).round()}%'),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text('${(goal.progress * 100).round()}%'),
+                                      const SizedBox(width: 4),
+                                      IconButton(
+                                        tooltip: 'Adicionar aporte',
+                                        visualDensity: VisualDensity.compact,
+                                        icon: const Icon(
+                                          Icons.add_circle_outline_rounded,
+                                          color: Color(0xFF16A34A),
+                                        ),
+                                        onPressed: goal.progress >= 1
+                                            ? null
+                                            : () async {
+                                                final contribution = await showDialog<double>(
+                                                  context: context,
+                                                  builder: (_) => GoalContributionDialog(
+                                                    remainingAmount:
+                                                        (goal.targetAmount -
+                                                                goal.currentAmount)
+                                                            .clamp(
+                                                              0.0,
+                                                              double.infinity,
+                                                            ),
+                                                  ),
+                                                );
+
+                                                if (contribution == null) {
+                                                  return;
+                                                }
+
+                                                try {
+                                                  await planningRepository
+                                                      .addGoalContribution(
+                                                        goalId: goal.id,
+                                                        amount: contribution,
+                                                      );
+
+                                                  if (!context.mounted) return;
+
+                                                  ScaffoldMessenger.of(
+                                                    context,
+                                                  ).showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text(
+                                                        'Aporte adicionado com sucesso.',
+                                                      ),
+                                                    ),
+                                                  );
+                                                } catch (error) {
+                                                  if (!context.mounted) return;
+
+                                                  ScaffoldMessenger.of(
+                                                    context,
+                                                  ).showSnackBar(
+                                                    SnackBar(
+                                                      content: Text(
+                                                        'Não foi possível adicionar o aporte: $error',
+                                                      ),
+                                                    ),
+                                                  );
+                                                }
+                                              },
+                                      ),
+                                      const SizedBox(width: 2),
+
+                                      IconButton(
+                                        tooltip: 'Excluir meta',
+                                        visualDensity: VisualDensity.compact,
+                                        icon: const Icon(
+                                          Icons.delete_outline_rounded,
+                                          color: Color(0xFFDC2626),
+                                        ),
+                                        onPressed: () async {
+                                          final confirmed = await showDialog<bool>(
+                                            context: context,
+                                            builder: (dialogContext) => AlertDialog(
+                                              title: const Text(
+                                                'Excluir esta meta?',
+                                              ),
+                                              content: Text(
+                                                'A meta "${goal.name}" será excluída permanentemente.',
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () => Navigator.of(
+                                                    dialogContext,
+                                                  ).pop(false),
+                                                  child: const Text('Cancelar'),
+                                                ),
+                                                FilledButton(
+                                                  onPressed: () => Navigator.of(
+                                                    dialogContext,
+                                                  ).pop(true),
+                                                  style: FilledButton.styleFrom(
+                                                    backgroundColor:
+                                                        const Color(0xFFDC2626),
+                                                  ),
+                                                  child: const Text('Excluir'),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+
+                                          if (confirmed != true) return;
+
+                                          try {
+                                            await planningRepository.deleteGoal(
+                                              goal.id,
+                                            );
+                                            if (!context.mounted) return;
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                  'Meta excluída com sucesso.',
+                                                ),
+                                              ),
+                                            );
+                                          } catch (error) {
+                                            if (!context.mounted) return;
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  'Não foi possível excluir a meta: $error',
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                        },
+                                      ),
+                                    ],
+                                  ),
                                 ],
                               ),
                               const SizedBox(height: 10),
@@ -645,6 +1177,21 @@ class _PlanningTab extends StatelessWidget {
                                 '${_currency(goal.targetAmount)}',
                               ),
                               const SizedBox(height: 4),
+                              Text(
+                                goal.progress >= 1
+                                    ? 'Meta concluída'
+                                    : 'Falta ${_currency((goal.targetAmount - goal.currentAmount).clamp(0.0, double.infinity))}',
+                                style: TextStyle(
+                                  color: goal.progress >= 1
+                                      ? const Color(0xFF16A34A)
+                                      : null,
+                                  fontWeight: goal.progress >= 1
+                                      ? FontWeight.w800
+                                      : FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+
                               Text('Prazo: ${_date(goal.deadline)}'),
                             ],
                           ),
@@ -662,2970 +1209,68 @@ class _PlanningTab extends StatelessWidget {
   }
 }
 
-List<String> _buildFinancialRecommendations({
-  required double monthIncome,
-  required double monthExpenses,
-  required double savingsRate,
-  required List<FinancialTransaction> transactions,
-}) {
-  final recommendations = <String>[];
-  final monthMargin = monthIncome - monthExpenses;
-
-  final expenseTotals = <String, double>{};
-  for (final item in transactions.where((item) => !item.isIncome)) {
-    expenseTotals[item.category] =
-        (expenseTotals[item.category] ?? 0) + item.amount;
-  }
-
-  String? topCategory;
-  double topCategoryAmount = 0;
-  for (final entry in expenseTotals.entries) {
-    if (entry.value > topCategoryAmount) {
-      topCategory = entry.key;
-      topCategoryAmount = entry.value;
-    }
-  }
-
-  if (monthIncome == 0 && monthExpenses == 0) {
-    recommendations.add(
-      'Registre receitas e despesas do mês para receber recomendações personalizadas.',
-    );
-    recommendations.add(
-      'Defina ao menos um orçamento mensal para acompanhar limites por categoria.',
-    );
-    return recommendations;
-  }
-
-  if (monthIncome <= 0 && monthExpenses > 0) {
-    recommendations.add(
-      'Confira se todas as receitas do mês foram registradas antes de tomar decisões com base no saldo.',
-    );
-    if (topCategory != null) {
-      recommendations.add(
-        'Revise os gastos em $topCategory, hoje a categoria com maior despesa no mês (${_currency(topCategoryAmount)}).',
-      );
-    }
-    recommendations.add(
-      'Evite novos gastos não essenciais até que as receitas do mês estejam atualizadas.',
-    );
-    return recommendations;
-  }
-
-  if (monthExpenses > monthIncome) {
-    final deficit = monthExpenses - monthIncome;
-    recommendations.add(
-      'Reduza ou adie gastos não essenciais para eliminar o déficit mensal de ${_currency(deficit)}.',
-    );
-    if (topCategory != null) {
-      recommendations.add(
-        'Comece por $topCategory, que concentra ${_currency(topCategoryAmount)} das despesas deste mês.',
-      );
-    }
-    recommendations.add(
-      'Revise os limites do Planejamento e priorize despesas essenciais até o saldo mensal voltar ao positivo.',
-    );
-    return recommendations;
-  }
-
-  if (savingsRate >= 20) {
-    final suggestedGoalAmount = monthMargin * 0.5;
-    recommendations.add(
-      'Direcione cerca de ${_currency(suggestedGoalAmount)} da sobra do mês para sua principal meta financeira.',
-    );
-    recommendations.add(
-      'Mantenha a taxa de economia acima de 20% e preserve uma reserva para imprevistos.',
-    );
-    if (topCategory != null) {
-      recommendations.add(
-        'Continue acompanhando $topCategory, atualmente a maior categoria de despesa do mês.',
-      );
-    }
-    return recommendations;
-  }
-
-  if (savingsRate >= 10) {
-    recommendations.add(
-      'Tente elevar sua economia mensal de ${savingsRate.toStringAsFixed(0)}% para pelo menos 20%.',
-    );
-    if (topCategory != null) {
-      final suggestedReduction = topCategoryAmount * 0.1;
-      recommendations.add(
-        'Uma redução de 10% em $topCategory liberaria aproximadamente ${_currency(suggestedReduction)} neste mês.',
-      );
-    }
-    recommendations.add(
-      'Use parte da margem positiva de ${_currency(monthMargin)} para acelerar uma meta financeira.',
-    );
-    return recommendations;
-  }
-
-  recommendations.add(
-    'Sua margem está positiva, mas pequena. Busque chegar a pelo menos 10% de economia mensal.',
-  );
-  if (topCategory != null) {
-    recommendations.add(
-      'Revise $topCategory, sua maior categoria de despesa no mês (${_currency(topCategoryAmount)}).',
-    );
-  }
-  recommendations.add(
-    'Evite ampliar compromissos fixos enquanto a margem mensal estiver abaixo de 10%.',
-  );
-
-  return recommendations;
-}
-
-class _FinancialRecommendationsCard extends StatelessWidget {
-  const _FinancialRecommendationsCard({required this.recommendations});
-
-  final List<String> recommendations;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.auto_awesome_outlined,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  'Recomendações para este mês',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            ...recommendations.asMap().entries.map(
-              (entry) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    CircleAvatar(
-                      radius: 12,
-                      child: Text(
-                        '${entry.key + 1}',
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(child: Text(entry.value)),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MonthlyForecast {
-  const _MonthlyForecast({
-    required this.averageDailyExpense,
-    required this.projectedExpenses,
-    required this.projectedBalance,
-    required this.daysElapsed,
-    required this.daysInMonth,
+class GoalContributionDialog extends StatefulWidget {
+  const GoalContributionDialog({
+    required this.remainingAmount,
+    super.key,
   });
 
-  final double averageDailyExpense;
-  final double projectedExpenses;
-  final double projectedBalance;
-  final int daysElapsed;
-  final int daysInMonth;
+  final double remainingAmount;
+
+  @override
+  State<GoalContributionDialog> createState() =>
+      _GoalContributionDialogState();
 }
 
-_MonthlyForecast _buildMonthlyForecast({
-  required DateTime now,
-  required double monthIncome,
-  required double monthExpenses,
-}) {
-  final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
-  final daysElapsed = now.day.clamp(1, daysInMonth);
-  final averageDailyExpense = monthExpenses / daysElapsed;
-  final projectedExpenses = averageDailyExpense * daysInMonth;
-  final projectedBalance = monthIncome - projectedExpenses;
+class _GoalContributionDialogState extends State<GoalContributionDialog> {
+  final TextEditingController _controller = TextEditingController();
 
-  return _MonthlyForecast(
-    averageDailyExpense: averageDailyExpense,
-    projectedExpenses: projectedExpenses,
-    projectedBalance: projectedBalance,
-    daysElapsed: daysElapsed,
-    daysInMonth: daysInMonth,
-  );
-}
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
-class _MonthlyForecastCard extends StatelessWidget {
-  const _MonthlyForecastCard({required this.forecast});
-  final _MonthlyForecast forecast;
+  void _submit() {
+    final normalized = _controller.text
+        .trim()
+        .replaceAll('.', '')
+        .replaceAll(',', '.');
+    final value = double.tryParse(normalized);
+
+    if (value == null || value <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Informe um valor de aporte maior que zero.'),
+        ),
+      );
+      return;
+    }
+
+    Navigator.of(context).pop(value);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final positive = forecast.projectedBalance >= 0;
-    final accent = positive ? scheme.primary : scheme.error;
-
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.query_stats_outlined, color: accent),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Previsão até o fim do mês',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Estimativa baseada no ritmo médio de despesas dos '
-              '${forecast.daysElapsed} primeiros dias de ${forecast.daysInMonth}.',
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _ForecastMetric(
-                    label: 'Média diária',
-                    value: _currency(forecast.averageDailyExpense),
-                    icon: Icons.today_outlined,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _ForecastMetric(
-                    label: 'Despesas previstas',
-                    value: _currency(forecast.projectedExpenses),
-                    icon: Icons.calendar_month_outlined,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    positive
-                        ? Icons.savings_outlined
-                        : Icons.warning_amber_rounded,
-                    color: accent,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      positive
-                          ? 'Saldo mensal previsto: ${_currency(forecast.projectedBalance)}'
-                          : 'Déficit mensal previsto: ${_currency(forecast.projectedBalance.abs())}',
-                      style: TextStyle(
-                        color: accent,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'A previsão é uma referência e muda automaticamente conforme novos lançamentos são registrados.',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
+    return AlertDialog(
+      title: const Text('Adicionar aporte'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: InputDecoration(
+          labelText: 'Valor do aporte',
+          prefixText: 'R\$ ',
+          helperText: 'Falta ${_currency(widget.remainingAmount)}',
         ),
       ),
-    );
-  }
-}
-
-class _ForecastMetric extends StatelessWidget {
-  const _ForecastMetric({
-    required this.label,
-    required this.value,
-    required this.icon,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 20),
-          const SizedBox(height: 8),
-          Text(label),
-          const SizedBox(height: 4),
-          FittedBox(
-            child: Text(
-              value,
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FinancialScore {
-  const _FinancialScore({
-    required this.value,
-    required this.label,
-    required this.message,
-    required this.level,
-    required this.savingsPoints,
-    required this.commitmentPoints,
-    required this.forecastPoints,
-  });
-
-  final int value;
-  final String label;
-  final String message;
-  final _FinancialHealthLevel level;
-  final int savingsPoints;
-  final int commitmentPoints;
-  final int forecastPoints;
-}
-
-_FinancialScore _buildFinancialScore({
-  required double monthIncome,
-  required double monthExpenses,
-  required double savingsRate,
-  required _MonthlyForecast forecast,
-}) {
-  final commitmentRate = monthIncome <= 0
-      ? (monthExpenses > 0 ? 100.0 : 0.0)
-      : (monthExpenses / monthIncome) * 100;
-
-  final savingsPoints = monthIncome <= 0
-      ? 0
-      : savingsRate >= 20
-      ? 40
-      : savingsRate >= 10
-      ? 30
-      : savingsRate >= 0
-      ? 15
-      : 0;
-
-  final commitmentPoints = monthIncome <= 0
-      ? 0
-      : commitmentRate <= 70
-      ? 35
-      : commitmentRate <= 90
-      ? 25
-      : commitmentRate <= 100
-      ? 10
-      : 0;
-
-  final forecastPoints = forecast.projectedBalance > 0
-      ? 25
-      : forecast.projectedBalance == 0
-      ? 15
-      : 0;
-
-  final rawScore = savingsPoints + commitmentPoints + forecastPoints;
-  final value = rawScore.clamp(0, 100);
-
-  if (value >= 80) {
-    return _FinancialScore(
-      value: value,
-      label: 'Excelente',
-      message:
-          'Sua estrutura financeira está equilibrada. Continue preservando margem, orçamento e metas.',
-      level: _FinancialHealthLevel.healthy,
-      savingsPoints: savingsPoints,
-      commitmentPoints: commitmentPoints,
-      forecastPoints: forecastPoints,
-    );
-  }
-
-  if (value >= 60) {
-    return _FinancialScore(
-      value: value,
-      label: 'Estável',
-      message:
-          'Sua situação está sob controle, mas ainda há espaço para melhorar a economia e reduzir o comprometimento.',
-      level: _FinancialHealthLevel.stable,
-      savingsPoints: savingsPoints,
-      commitmentPoints: commitmentPoints,
-      forecastPoints: forecastPoints,
-    );
-  }
-
-  if (value >= 35) {
-    return _FinancialScore(
-      value: value,
-      label: 'Atenção',
-      message:
-          'Alguns indicadores precisam de ajuste. Priorize margem positiva e controle das despesas.',
-      level: _FinancialHealthLevel.attention,
-      savingsPoints: savingsPoints,
-      commitmentPoints: commitmentPoints,
-      forecastPoints: forecastPoints,
-    );
-  }
-
-  return _FinancialScore(
-    value: value,
-    label: 'Crítica',
-    message:
-        'Os indicadores atuais mostram risco financeiro. Revise receitas, gastos e orçamento com prioridade.',
-    level: _FinancialHealthLevel.critical,
-    savingsPoints: savingsPoints,
-    commitmentPoints: commitmentPoints,
-    forecastPoints: forecastPoints,
-  );
-}
-
-class _FinancialScoreCard extends StatelessWidget {
-  const _FinancialScoreCard({required this.score});
-
-  final _FinancialScore score;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final accent = switch (score.level) {
-      _FinancialHealthLevel.healthy => scheme.primary,
-      _FinancialHealthLevel.stable => scheme.secondary,
-      _FinancialHealthLevel.attention => scheme.tertiary,
-      _FinancialHealthLevel.critical => scheme.error,
-    };
-
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.speed_outlined, color: accent),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Pontuação de saúde financeira',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                SizedBox(
-                  width: 84,
-                  height: 84,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      CircularProgressIndicator(
-                        value: score.value / 100,
-                        strokeWidth: 10,
-                        color: accent,
-                        backgroundColor: accent.withValues(alpha: 0.12),
-                      ),
-                      Text(
-                        '${score.value}',
-                        style: Theme.of(context).textTheme.headlineSmall
-                            ?.copyWith(
-                              fontWeight: FontWeight.w900,
-                              color: accent,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        score.label,
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w900,
-                          color: accent,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(score.message),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 10,
-              runSpacing: 8,
-              children: [
-                _ScoreChip(
-                  label: 'Economia',
-                  points: score.savingsPoints,
-                  maxPoints: 40,
-                ),
-                _ScoreChip(
-                  label: 'Comprometimento',
-                  points: score.commitmentPoints,
-                  maxPoints: 35,
-                ),
-                _ScoreChip(
-                  label: 'Previsão',
-                  points: score.forecastPoints,
-                  maxPoints: 25,
-                ),
-              ],
-            ),
-          ],
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
         ),
-      ),
-    );
-  }
-}
-
-class _ScoreChip extends StatelessWidget {
-  const _ScoreChip({
-    required this.label,
-    required this.points,
-    required this.maxPoints,
-  });
-
-  final String label;
-  final int points;
-  final int maxPoints;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        '$label: $points/$maxPoints',
-        style: const TextStyle(fontWeight: FontWeight.w700),
-      ),
-    );
-  }
-}
-
-class _MonthlyChartPoint {
-  const _MonthlyChartPoint({
-    required this.year,
-    required this.month,
-    required this.income,
-    required this.expenses,
-  });
-
-  final int year;
-  final int month;
-  final double income;
-  final double expenses;
-
-  String get label => _monthShort(month);
-}
-
-List<_MonthlyChartPoint> _buildMonthlyChartData(
-  List<FinancialTransaction> transactions,
-) {
-  final now = DateTime.now();
-  final points = <_MonthlyChartPoint>[];
-
-  for (var offset = 5; offset >= 0; offset--) {
-    final date = DateTime(now.year, now.month - offset, 1);
-    final items = transactions.where(
-      (item) => item.date.year == date.year && item.date.month == date.month,
-    );
-
-    var income = 0.0;
-    var expenses = 0.0;
-
-    for (final item in items) {
-      if (item.isIncome) {
-        income += item.amount;
-      } else {
-        expenses += item.amount;
-      }
-    }
-
-    points.add(
-      _MonthlyChartPoint(
-        year: date.year,
-        month: date.month,
-        income: income,
-        expenses: expenses,
-      ),
-    );
-  }
-
-  return points;
-}
-
-String _monthShort(int month) {
-  const labels = [
-    'Jan',
-    'Fev',
-    'Mar',
-    'Abr',
-    'Mai',
-    'Jun',
-    'Jul',
-    'Ago',
-    'Set',
-    'Out',
-    'Nov',
-    'Dez',
-  ];
-  return labels[month - 1];
-}
-
-class _FinancialTrendsCard extends StatelessWidget {
-  const _FinancialTrendsCard({required this.transactions});
-  final List<FinancialTransaction> transactions;
-
-  @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final previousDate = DateTime(now.year, now.month - 1, 1);
-    final current = transactions
-        .where((e) => e.date.year == now.year && e.date.month == now.month)
-        .toList();
-    final previous = transactions
-        .where(
-          (e) =>
-              e.date.year == previousDate.year &&
-              e.date.month == previousDate.month,
-        )
-        .toList();
-
-    final currentIncome = _sumIncome(current);
-    final previousIncome = _sumIncome(previous);
-    final currentExpenses = _sumExpenses(current);
-    final previousExpenses = _sumExpenses(previous);
-    final currentBalance = currentIncome - currentExpenses;
-    final previousBalance = previousIncome - previousExpenses;
-
-    final currentCats = <String, double>{};
-    final previousCats = <String, double>{};
-    for (final e in current.where((e) => !e.isIncome)) {
-      currentCats[e.category] = (currentCats[e.category] ?? 0) + e.amount;
-    }
-    for (final e in previous.where((e) => !e.isIncome)) {
-      previousCats[e.category] = (previousCats[e.category] ?? 0) + e.amount;
-    }
-
-    String? increaseCat;
-    double increase = 0;
-    String? reductionCat;
-    double reduction = 0;
-    for (final cat in {...currentCats.keys, ...previousCats.keys}) {
-      final delta = (currentCats[cat] ?? 0) - (previousCats[cat] ?? 0);
-      if (delta > increase) {
-        increase = delta;
-        increaseCat = cat;
-      }
-      if (delta < reduction) {
-        reduction = delta;
-        reductionCat = cat;
-      }
-    }
-
-    final items =
-        <({String title, String message, IconData icon, Color color})>[];
-    void add(String title, String message, IconData icon, Color color) =>
-        items.add((title: title, message: message, icon: icon, color: color));
-
-    final incomeDelta = currentIncome - previousIncome;
-    if (incomeDelta > 0.005) {
-      add(
-        'Receitas cresceram',
-        'As entradas aumentaram ${_currency(incomeDelta)}.',
-        Icons.trending_up_rounded,
-        const Color(0xFF16A34A),
-      );
-    } else if (incomeDelta < -0.005) {
-      add(
-        'Receitas diminuíram',
-        'As entradas caíram ${_currency(incomeDelta.abs())}.',
-        Icons.trending_down_rounded,
-        const Color(0xFFDC2626),
-      );
-    } else {
-      add(
-        'Receitas estáveis',
-        'As receitas permaneceram no mesmo nível.',
-        Icons.horizontal_rule_rounded,
-        const Color(0xFF64748B),
-      );
-    }
-
-    final expenseDelta = currentExpenses - previousExpenses;
-    if (expenseDelta > 0.005) {
-      add(
-        'Despesas aumentaram',
-        'Os gastos cresceram ${_currency(expenseDelta)}.',
-        Icons.north_east_rounded,
-        const Color(0xFFDC2626),
-      );
-    } else if (expenseDelta < -0.005) {
-      add(
-        'Despesas diminuíram',
-        'Os gastos foram reduzidos em ${_currency(expenseDelta.abs())}.',
-        Icons.south_east_rounded,
-        const Color(0xFF16A34A),
-      );
-    } else {
-      add(
-        'Despesas estáveis',
-        'Os gastos permaneceram no mesmo nível.',
-        Icons.horizontal_rule_rounded,
-        const Color(0xFF64748B),
-      );
-    }
-
-    final balanceDelta = currentBalance - previousBalance;
-    if (previousBalance >= 0 && currentBalance < 0) {
-      add(
-        'Saldo virou negativo',
-        'O resultado passou de ${_currency(previousBalance)} para ${_currency(currentBalance)}.',
-        Icons.warning_amber_rounded,
-        const Color(0xFFDC2626),
-      );
-    } else if (previousBalance <= 0 && currentBalance > 0) {
-      add(
-        'Saldo virou positivo',
-        'O resultado passou de ${_currency(previousBalance)} para ${_currency(currentBalance)}.',
-        Icons.check_circle_outline_rounded,
-        const Color(0xFF16A34A),
-      );
-    } else if (balanceDelta > 0.005) {
-      add(
-        'Saldo melhorou',
-        'O resultado mensal melhorou ${_currency(balanceDelta)}.',
-        Icons.account_balance_wallet_outlined,
-        const Color(0xFF16A34A),
-      );
-    } else if (balanceDelta < -0.005) {
-      add(
-        'Saldo piorou',
-        'O resultado mensal caiu ${_currency(balanceDelta.abs())}.',
-        Icons.account_balance_wallet_outlined,
-        const Color(0xFFDC2626),
-      );
-    }
-
-    if (increaseCat != null) {
-      add(
-        'Maior pressão no orçamento',
-        '$increaseCat aumentou ${_currency(increase)}.',
-        Icons.priority_high_rounded,
-        const Color(0xFFF59E0B),
-      );
-    }
-    if (reductionCat != null) {
-      add(
-        'Maior redução de gastos',
-        '$reductionCat caiu ${_currency(reduction.abs())}.',
-        Icons.savings_outlined,
-        const Color(0xFF16A34A),
-      );
-    }
-
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.auto_graph_rounded, color: Color(0xFF0F766E)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Tendências e destaques',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 5),
-            Text(
-              'Leitura automática das principais mudanças em relação ao mês anterior',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 14),
-            ...items.map(
-              (item) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(13),
-                  decoration: BoxDecoration(
-                    color: item.color.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(item.icon, color: item.color, size: 21),
-                      const SizedBox(width: 11),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              item.title,
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(
-                                    color: item.color,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              item.message,
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ExpenseCategoryComparisonCard extends StatelessWidget {
-  const _ExpenseCategoryComparisonCard({required this.transactions});
-
-  final List<FinancialTransaction> transactions;
-
-  @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final currentStart = DateTime(now.year, now.month);
-    final previousStart = DateTime(now.year, now.month - 1);
-    final nextStart = DateTime(now.year, now.month + 1);
-
-    final current = <String, double>{};
-    final previous = <String, double>{};
-
-    for (final item in transactions.where((item) => !item.isIncome)) {
-      final date = item.date;
-      if (!date.isBefore(currentStart) && date.isBefore(nextStart)) {
-        current[item.category] = (current[item.category] ?? 0) + item.amount;
-      } else if (!date.isBefore(previousStart) && date.isBefore(currentStart)) {
-        previous[item.category] = (previous[item.category] ?? 0) + item.amount;
-      }
-    }
-
-    final categories = {...current.keys, ...previous.keys}.toList()
-      ..sort((a, b) {
-        final aTotal = (current[a] ?? 0) + (previous[a] ?? 0);
-        final bTotal = (current[b] ?? 0) + (previous[b] ?? 0);
-        return bTotal.compareTo(aTotal);
-      });
-
-    const monthNames = [
-      'Jan',
-      'Fev',
-      'Mar',
-      'Abr',
-      'Mai',
-      'Jun',
-      'Jul',
-      'Ago',
-      'Set',
-      'Out',
-      'Nov',
-      'Dez',
-    ];
-    final currentLabel = monthNames[currentStart.month - 1];
-    final previousLabel = monthNames[previousStart.month - 1];
-
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.category_outlined, color: Color(0xFF7C3AED)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Comparativo de despesas por categoria',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 5),
-            Text(
-              '$currentLabel x $previousLabel — veja onde seus gastos aumentaram ou diminuíram',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 14),
-            if (categories.isEmpty)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF64748B).withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Text(
-                  'Ainda não há despesas suficientes para comparar os dois meses.',
-                ),
-              )
-            else
-              ...List.generate(categories.length, (index) {
-                final category = categories[index];
-                return Column(
-                  children: [
-                    _ExpenseCategoryComparisonRow(
-                      category: category,
-                      currentLabel: currentLabel,
-                      previousLabel: previousLabel,
-                      current: current[category] ?? 0,
-                      previous: previous[category] ?? 0,
-                    ),
-                    if (index < categories.length - 1)
-                      const Divider(height: 18),
-                  ],
-                );
-              }),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ExpenseCategoryComparisonRow extends StatelessWidget {
-  const _ExpenseCategoryComparisonRow({
-    required this.category,
-    required this.currentLabel,
-    required this.previousLabel,
-    required this.current,
-    required this.previous,
-  });
-
-  final String category;
-  final String currentLabel;
-  final String previousLabel;
-  final double current;
-  final double previous;
-
-  @override
-  Widget build(BuildContext context) {
-    final delta = current - previous;
-    final unchanged = delta.abs() < 0.005;
-    final newExpense = previous <= 0 && current > 0;
-    final noCurrentExpense = previous > 0 && current <= 0;
-    final reduced = delta < 0;
-
-    final Color accent;
-    final IconData icon;
-    final String changeText;
-
-    if (unchanged) {
-      accent = const Color(0xFF64748B);
-      icon = Icons.remove_rounded;
-      changeText = 'Sem alteração';
-    } else if (newExpense) {
-      accent = const Color(0xFFDC2626);
-      icon = Icons.add_circle_outline_rounded;
-      changeText = 'Nova despesa: ${_currency(current)}';
-    } else if (noCurrentExpense) {
-      accent = const Color(0xFF16A34A);
-      icon = Icons.check_circle_outline_rounded;
-      changeText = 'Sem gasto neste mês';
-    } else if (reduced) {
-      accent = const Color(0xFF16A34A);
-      icon = Icons.arrow_downward_rounded;
-      changeText = 'Redução de ${_currency(delta.abs())}';
-    } else {
-      accent = const Color(0xFFDC2626);
-      icon = Icons.arrow_upward_rounded;
-      changeText = 'Aumento de ${_currency(delta)}';
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: accent, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  category,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 3),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 3,
-                  children: [
-                    Text(
-                      '$previousLabel: ${_currency(previous)}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    Text(
-                      '$currentLabel: ${_currency(current)}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              changeText,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: accent,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MonthlyConsolidatedReportCard extends StatelessWidget {
-  const _MonthlyConsolidatedReportCard({required this.transactions});
-
-  final List<FinancialTransaction> transactions;
-
-  @override
-  Widget build(BuildContext context) {
-    final income = _sumIncome(transactions);
-    final expenses = _sumExpenses(transactions);
-    final balance = income - expenses;
-    final savingsRate = income <= 0
-        ? 0.0
-        : ((income - expenses) / income) * 100;
-
-    final expenseTotals = <String, double>{};
-    for (final item in transactions.where((item) => !item.isIncome)) {
-      expenseTotals[item.category] =
-          (expenseTotals[item.category] ?? 0) + item.amount;
-    }
-
-    MapEntry<String, double>? topCategory;
-    for (final entry in expenseTotals.entries) {
-      if (topCategory == null || entry.value > topCategory.value) {
-        topCategory = entry;
-      }
-    }
-
-    final hasIncome = income > 0;
-    final positive = balance >= 0 && hasIncome;
-
-    final Color statusColor;
-    final IconData statusIcon;
-    final String statusTitle;
-    final String statusMessage;
-
-    if (!hasIncome && expenses > 0) {
-      statusColor = const Color(0xFFDC2626);
-      statusIcon = Icons.warning_amber_rounded;
-      statusTitle = 'Resultado deficitário';
-      statusMessage =
-          'Há despesas registradas no mês, mas nenhuma receita. Atualize as entradas para ter uma visão completa.';
-    } else if (positive && savingsRate >= 20) {
-      statusColor = const Color(0xFF16A34A);
-      statusIcon = Icons.check_circle_outline_rounded;
-      statusTitle = 'Mês positivo';
-      statusMessage =
-          'As receitas cobriram as despesas e a taxa de economia está em um nível saudável.';
-    } else if (positive) {
-      statusColor = const Color(0xFFF59E0B);
-      statusIcon = Icons.info_outline_rounded;
-      statusTitle = 'Atenção aos gastos';
-      statusMessage =
-          'O mês está positivo, mas há espaço para aumentar a parcela da renda que sobra após as despesas.';
-    } else {
-      statusColor = const Color(0xFFDC2626);
-      statusIcon = Icons.trending_down_rounded;
-      statusTitle = 'Resultado deficitário';
-      statusMessage =
-          'As despesas superaram as receitas do mês. Revise os maiores gastos e priorize o equilíbrio do orçamento.';
-    }
-
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.summarize_outlined, color: Color(0xFF2563EB)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Relatório mensal consolidado',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 5),
-            Text(
-              'Resumo dos principais indicadores financeiros do mês',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                _MonthlyReportMetric(
-                  label: 'Receitas',
-                  value: _currency(income),
-                  icon: Icons.trending_up_rounded,
-                ),
-                _MonthlyReportMetric(
-                  label: 'Despesas',
-                  value: _currency(expenses),
-                  icon: Icons.trending_down_rounded,
-                ),
-                _MonthlyReportMetric(
-                  label: 'Saldo do mês',
-                  value: _currency(balance),
-                  icon: Icons.account_balance_wallet_outlined,
-                ),
-                _MonthlyReportMetric(
-                  label: 'Taxa de economia',
-                  value: hasIncome ? '${savingsRate.toStringAsFixed(1)}%' : '—',
-                  icon: Icons.savings_outlined,
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(13),
-              decoration: BoxDecoration(
-                color: const Color(0xFF64748B).withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.category_outlined, size: 20),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: Text(
-                      topCategory == null
-                          ? 'Maior categoria de gastos: nenhuma despesa registrada'
-                          : 'Maior categoria de gastos: ${topCategory.key} (${_currency(topCategory.value)})',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: statusColor.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(statusIcon, color: statusColor, size: 22),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          statusTitle,
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(
-                                color: statusColor,
-                                fontWeight: FontWeight.w800,
-                              ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          statusMessage,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MonthlyReportMetric extends StatelessWidget {
-  const _MonthlyReportMetric({
-    required this.label,
-    required this.value,
-    required this.icon,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 225,
-      padding: const EdgeInsets.all(13),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2563EB).withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: const Color(0xFF2563EB)),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: Theme.of(context).textTheme.bodySmall),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MonthComparisonData {
-  const _MonthComparisonData({
-    required this.currentIncome,
-    required this.previousIncome,
-    required this.currentExpenses,
-    required this.previousExpenses,
-  });
-
-  final double currentIncome;
-  final double previousIncome;
-  final double currentExpenses;
-  final double previousExpenses;
-
-  double get currentBalance => currentIncome - currentExpenses;
-  double get previousBalance => previousIncome - previousExpenses;
-}
-
-_MonthComparisonData _buildMonthComparisonData(
-  List<FinancialTransaction> transactions,
-) {
-  final now = DateTime.now();
-  final previousDate = DateTime(now.year, now.month - 1, 1);
-
-  final currentItems = transactions.where(
-    (item) => item.date.year == now.year && item.date.month == now.month,
-  );
-  final previousItems = transactions.where(
-    (item) =>
-        item.date.year == previousDate.year &&
-        item.date.month == previousDate.month,
-  );
-
-  double income(Iterable<FinancialTransaction> items) => items
-      .where((item) => item.isIncome)
-      .fold<double>(0, (sum, item) => sum + item.amount);
-
-  double expenses(Iterable<FinancialTransaction> items) => items
-      .where((item) => !item.isIncome)
-      .fold<double>(0, (sum, item) => sum + item.amount);
-
-  return _MonthComparisonData(
-    currentIncome: income(currentItems),
-    previousIncome: income(previousItems),
-    currentExpenses: expenses(currentItems),
-    previousExpenses: expenses(previousItems),
-  );
-}
-
-double? _comparisonPercent(double current, double previous) {
-  if (previous == 0) return current == 0 ? 0 : null;
-  return ((current - previous) / previous.abs()) * 100;
-}
-
-class _MonthComparisonCard extends StatelessWidget {
-  const _MonthComparisonCard({required this.transactions});
-
-  final List<FinancialTransaction> transactions;
-
-  @override
-  Widget build(BuildContext context) {
-    final data = _buildMonthComparisonData(transactions);
-    final now = DateTime.now();
-    final previousDate = DateTime(now.year, now.month - 1, 1);
-    final currentLabel = _monthShort(now.month);
-    final previousLabel = _monthShort(previousDate.month);
-
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(
-                  Icons.compare_arrows_rounded,
-                  color: Color(0xFF7C3AED),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Comparativo mensal',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 5),
-            Text(
-              '$currentLabel x $previousLabel — veja como suas finanças mudaram de um mês para o outro',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 16),
-            _MonthComparisonRow(
-              title: 'Receitas',
-              icon: Icons.trending_up_rounded,
-              current: data.currentIncome,
-              previous: data.previousIncome,
-              higherIsBetter: true,
-            ),
-            const Divider(height: 24),
-            _MonthComparisonRow(
-              title: 'Despesas',
-              icon: Icons.trending_down_rounded,
-              current: data.currentExpenses,
-              previous: data.previousExpenses,
-              higherIsBetter: false,
-            ),
-            const Divider(height: 24),
-            _MonthComparisonRow(
-              title: 'Saldo mensal',
-              icon: Icons.account_balance_wallet_outlined,
-              current: data.currentBalance,
-              previous: data.previousBalance,
-              higherIsBetter: true,
-              describeSignChange: true,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MonthComparisonRow extends StatelessWidget {
-  const _MonthComparisonRow({
-    required this.title,
-    required this.icon,
-    required this.current,
-    required this.previous,
-    required this.higherIsBetter,
-    this.describeSignChange = false,
-  });
-
-  final String title;
-  final IconData icon;
-  final double current;
-  final double previous;
-  final bool higherIsBetter;
-  final bool describeSignChange;
-
-  @override
-  Widget build(BuildContext context) {
-    final percent = _comparisonPercent(current, previous);
-    final delta = current - previous;
-    final unchanged = delta.abs() < 0.005;
-    final improved = unchanged
-        ? null
-        : higherIsBetter
-        ? delta > 0
-        : delta < 0;
-
-    final accent = unchanged
-        ? const Color(0xFF64748B)
-        : improved!
-        ? const Color(0xFF16A34A)
-        : const Color(0xFFDC2626);
-
-    final crossedToNegative =
-        describeSignChange && previous >= 0 && current < 0;
-    final crossedToPositive =
-        describeSignChange && previous <= 0 && current > 0;
-
-    final changeText = crossedToNegative
-        ? 'Virou negativo'
-        : crossedToPositive
-        ? 'Virou positivo'
-        : percent == null
-        ? 'Sem base no mês anterior'
-        : unchanged
-        ? 'Sem alteração'
-        : '${delta > 0 ? '+' : ''}${percent.toStringAsFixed(1)}%';
-
-    final changeIcon = crossedToNegative
-        ? Icons.trending_down_rounded
-        : crossedToPositive
-        ? Icons.trending_up_rounded
-        : unchanged
-        ? Icons.remove_rounded
-        : delta > 0
-        ? Icons.arrow_upward_rounded
-        : Icons.arrow_downward_rounded;
-
-    return Row(
-      children: [
-        Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: accent.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(icon, color: accent, size: 21),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 3),
-              Wrap(
-                spacing: 10,
-                runSpacing: 4,
-                children: [
-                  Text(
-                    'Atual: ${_currency(current)}',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  Text(
-                    'Anterior: ${_currency(previous)}',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 10),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-          decoration: BoxDecoration(
-            color: accent.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(changeIcon, size: 15, color: accent),
-              const SizedBox(width: 3),
-              Text(
-                changeText,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: accent,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-        ),
+        FilledButton(onPressed: _submit, child: const Text('Adicionar')),
       ],
     );
   }
-}
-
-class _IncomeExpenseBarChart extends StatelessWidget {
-  const _IncomeExpenseBarChart({required this.transactions});
-
-  final List<FinancialTransaction> transactions;
-
-  @override
-  Widget build(BuildContext context) {
-    final points = _buildMonthlyChartData(transactions);
-    final maxValue = points.fold<double>(
-      0,
-      (current, item) =>
-          [current, item.income, item.expenses].reduce((a, b) => a > b ? a : b),
-    );
-    final chartMax = maxValue <= 0 ? 100.0 : maxValue * 1.22;
-
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.bar_chart_rounded, color: Color(0xFF2563EB)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Receitas x despesas',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                const _ChartLegend(color: Color(0xFF16A34A), label: 'Receitas'),
-                const SizedBox(width: 10),
-                const _ChartLegend(color: Color(0xFFF97316), label: 'Despesas'),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Comparativo colorido dos últimos 6 meses',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 18),
-            SizedBox(
-              height: 250,
-              child: BarChart(
-                BarChartData(
-                  maxY: chartMax,
-                  alignment: BarChartAlignment.spaceAround,
-                  groupsSpace: 18,
-                  borderData: FlBorderData(show: false),
-                  gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: false,
-                    horizontalInterval: chartMax / 4,
-                    getDrawingHorizontalLine: (value) => FlLine(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.outlineVariant.withValues(alpha: 0.45),
-                      strokeWidth: 1,
-                    ),
-                  ),
-                  titlesData: FlTitlesData(
-                    topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    leftTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 32,
-                        getTitlesWidget: (value, meta) {
-                          final index = value.toInt();
-                          if (index < 0 || index >= points.length) {
-                            return const SizedBox.shrink();
-                          }
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Text(
-                              points[index].label,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  barTouchData: BarTouchData(
-                    enabled: true,
-                    touchTooltipData: BarTouchTooltipData(
-                      getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                        final type = rodIndex == 0 ? 'Receitas' : 'Despesas';
-                        return BarTooltipItem(
-                          '$type\n${_currency(rod.toY)}',
-                          const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  barGroups: points.asMap().entries.map((entry) {
-                    final index = entry.key;
-                    final item = entry.value;
-
-                    return BarChartGroupData(
-                      x: index,
-                      barsSpace: 5,
-                      barRods: [
-                        BarChartRodData(
-                          toY: item.income,
-                          width: 13,
-                          color: const Color(0xFF16A34A),
-                          borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(6),
-                          ),
-                        ),
-                        BarChartRodData(
-                          toY: item.expenses,
-                          width: 13,
-                          color: const Color(0xFFF97316),
-                          borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(6),
-                          ),
-                        ),
-                      ],
-                    );
-                  }).toList(),
-                ),
-                duration: const Duration(milliseconds: 650),
-                curve: Curves.easeOutCubic,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ChartLegend extends StatelessWidget {
-  const _ChartLegend({required this.color, required this.label});
-
-  final Color color;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 10,
-          height: 10,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(3),
-          ),
-        ),
-        const SizedBox(width: 5),
-        Text(
-          label,
-          style: Theme.of(
-            context,
-          ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
-        ),
-      ],
-    );
-  }
-}
-
-class _ExpenseCategorySlice {
-  const _ExpenseCategorySlice({
-    required this.category,
-    required this.amount,
-    required this.color,
-  });
-
-  final String category;
-  final double amount;
-  final Color color;
-}
-
-List<_ExpenseCategorySlice> _buildExpenseCategorySlices(
-  List<FinancialTransaction> transactions,
-) {
-  final totals = <String, double>{};
-
-  for (final item in transactions.where((item) => !item.isIncome)) {
-    totals[item.category] = (totals[item.category] ?? 0) + item.amount;
-  }
-
-  const palette = [
-    Color(0xFF2563EB),
-    Color(0xFF16A34A),
-    Color(0xFFF97316),
-    Color(0xFF9333EA),
-    Color(0xFFDC2626),
-    Color(0xFF0891B2),
-    Color(0xFFEAB308),
-    Color(0xFFDB2777),
-  ];
-
-  final sorted = totals.entries.toList()
-    ..sort((a, b) => b.value.compareTo(a.value));
-
-  return sorted.asMap().entries.map((entry) {
-    final index = entry.key;
-    final item = entry.value;
-
-    return _ExpenseCategorySlice(
-      category: item.key,
-      amount: item.value,
-      color: palette[index % palette.length],
-    );
-  }).toList();
-}
-
-class _ExpenseCategoryDonutChart extends StatefulWidget {
-  const _ExpenseCategoryDonutChart({required this.transactions});
-
-  final List<FinancialTransaction> transactions;
-
-  @override
-  State<_ExpenseCategoryDonutChart> createState() =>
-      _ExpenseCategoryDonutChartState();
-}
-
-class _ExpenseCategoryDonutChartState
-    extends State<_ExpenseCategoryDonutChart> {
-  int touchedIndex = -1;
-
-  @override
-  Widget build(BuildContext context) {
-    final slices = _buildExpenseCategorySlices(widget.transactions);
-    final total = slices.fold<double>(0, (sum, item) => sum + item.amount);
-
-    if (slices.isEmpty || total <= 0) {
-      return const Card(
-        elevation: 0,
-        child: Padding(
-          padding: EdgeInsets.all(18),
-          child: Row(
-            children: [
-              Icon(Icons.donut_large_outlined),
-              SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'O gráfico por categoria aparecerá quando houver despesas no mês.',
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.donut_large_rounded, color: Color(0xFF7C3AED)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Distribuição das despesas',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Veja quais categorias mais pesam no orçamento do mês',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 18),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final compact = constraints.maxWidth < 620;
-
-                final chart = SizedBox(
-                  height: 240,
-                  width: compact ? double.infinity : 300,
-                  child: PieChart(
-                    PieChartData(
-                      centerSpaceRadius: 56,
-                      sectionsSpace: 3,
-                      pieTouchData: PieTouchData(
-                        touchCallback: (event, response) {
-                          setState(() {
-                            if (!event.isInterestedForInteractions ||
-                                response?.touchedSection == null) {
-                              touchedIndex = -1;
-                              return;
-                            }
-                            touchedIndex =
-                                response!.touchedSection!.touchedSectionIndex;
-                          });
-                        },
-                      ),
-                      sections: slices.asMap().entries.map((entry) {
-                        final index = entry.key;
-                        final slice = entry.value;
-                        final percentage = (slice.amount / total) * 100;
-                        final active = index == touchedIndex;
-
-                        return PieChartSectionData(
-                          value: slice.amount,
-                          color: slice.color,
-                          radius: active ? 72 : 62,
-                          title: percentage >= 6
-                              ? '${percentage.toStringAsFixed(0)}%'
-                              : '',
-                          titleStyle: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                            fontSize: active ? 15 : 13,
-                          ),
-                          badgeWidget: active
-                              ? _DonutValueBadge(
-                                  value: _currency(slice.amount),
-                                  color: slice.color,
-                                )
-                              : null,
-                          badgePositionPercentageOffset: 1.25,
-                        );
-                      }).toList(),
-                    ),
-                    duration: const Duration(milliseconds: 650),
-                    curve: Curves.easeOutCubic,
-                  ),
-                );
-
-                final legend = Column(
-                  children: slices.map((slice) {
-                    final percentage = (slice.amount / total) * 100;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 9),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 12,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: slice.color,
-                              borderRadius: BorderRadius.circular(3),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              slice.category,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            '${percentage.toStringAsFixed(0)}%',
-                            style: const TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(_currency(slice.amount)),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                );
-
-                if (compact) {
-                  return Column(
-                    children: [chart, const SizedBox(height: 14), legend],
-                  );
-                }
-
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    chart,
-                    const SizedBox(width: 24),
-                    Expanded(child: legend),
-                  ],
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DonutValueBadge extends StatelessWidget {
-  const _DonutValueBadge({required this.value, required this.color});
-
-  final String value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(999),
-        boxShadow: const [
-          BoxShadow(
-            blurRadius: 8,
-            offset: Offset(0, 2),
-            color: Color(0x33000000),
-          ),
-        ],
-      ),
-      child: Text(
-        value,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
-  }
-}
-
-class _BalanceEvolutionPoint {
-  const _BalanceEvolutionPoint({
-    required this.year,
-    required this.month,
-    required this.balance,
-  });
-
-  final int year;
-  final int month;
-  final double balance;
-
-  String get label => _monthShort(month);
-}
-
-List<_BalanceEvolutionPoint> _buildBalanceEvolutionData(
-  List<FinancialTransaction> transactions,
-) {
-  final now = DateTime.now();
-  final points = <_BalanceEvolutionPoint>[];
-
-  for (var offset = 5; offset >= 0; offset--) {
-    final date = DateTime(now.year, now.month - offset, 1);
-    final monthEnd = DateTime(date.year, date.month + 1, 0, 23, 59, 59);
-
-    var balance = 0.0;
-
-    for (final item in transactions.where(
-      (item) => !item.date.isAfter(monthEnd),
-    )) {
-      balance += item.isIncome ? item.amount : -item.amount;
-    }
-
-    points.add(
-      _BalanceEvolutionPoint(
-        year: date.year,
-        month: date.month,
-        balance: balance,
-      ),
-    );
-  }
-
-  return points;
-}
-
-class _BalanceEvolutionChart extends StatelessWidget {
-  const _BalanceEvolutionChart({required this.transactions});
-
-  final List<FinancialTransaction> transactions;
-
-  @override
-  Widget build(BuildContext context) {
-    final points = _buildBalanceEvolutionData(transactions);
-    final values = points.map((item) => item.balance).toList();
-
-    final minValue = values.reduce((a, b) => a < b ? a : b);
-    final maxValue = values.reduce((a, b) => a > b ? a : b);
-
-    final spread = (maxValue - minValue).abs();
-    final padding = spread <= 0 ? 100.0 : spread * 0.25;
-    final minY = minValue - padding;
-    final maxY = maxValue + padding;
-
-    const lineColor = Color(0xFF2563EB);
-    const areaColor = Color(0xFF60A5FA);
-
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.show_chart_rounded, color: lineColor),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Evolução do saldo acumulado',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Veja como o saldo acumulado (receitas - despesas) evoluiu nos últimos 6 meses',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 18),
-            SizedBox(
-              height: 245,
-              child: LineChart(
-                LineChartData(
-                  minY: minY,
-                  maxY: maxY,
-                  borderData: FlBorderData(show: false),
-                  gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: false,
-                    horizontalInterval: (maxY - minY) / 4,
-                    getDrawingHorizontalLine: (value) => FlLine(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.outlineVariant.withValues(alpha: 0.45),
-                      strokeWidth: 1,
-                    ),
-                  ),
-                  titlesData: FlTitlesData(
-                    topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    leftTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 32,
-                        interval: 1,
-                        getTitlesWidget: (value, meta) {
-                          final index = value.toInt();
-                          if (index < 0 || index >= points.length) {
-                            return const SizedBox.shrink();
-                          }
-
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Text(
-                              points[index].label,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  lineTouchData: LineTouchData(
-                    enabled: true,
-                    touchTooltipData: LineTouchTooltipData(
-                      getTooltipItems: (spots) {
-                        return spots.map((spot) {
-                          final index = spot.x.toInt();
-                          final point = points[index];
-                          return LineTooltipItem(
-                            '${point.label}\nSaldo acumulado\n${_currency(point.balance)}',
-                            const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          );
-                        }).toList();
-                      },
-                    ),
-                  ),
-                  lineBarsData: [
-                    LineChartBarData(
-                      spots: points.asMap().entries.map((entry) {
-                        return FlSpot(
-                          entry.key.toDouble(),
-                          entry.value.balance,
-                        );
-                      }).toList(),
-                      isCurved: true,
-                      curveSmoothness: 0.28,
-                      barWidth: 4,
-                      color: lineColor,
-                      isStrokeCapRound: true,
-                      dotData: FlDotData(
-                        show: true,
-                        getDotPainter: (spot, percent, barData, index) {
-                          return FlDotCirclePainter(
-                            radius: 5,
-                            color: lineColor,
-                            strokeWidth: 3,
-                            strokeColor: Colors.white,
-                          );
-                        },
-                      ),
-                      belowBarData: BarAreaData(
-                        show: true,
-                        color: areaColor.withValues(alpha: 0.20),
-                      ),
-                    ),
-                  ],
-                ),
-                duration: const Duration(milliseconds: 700),
-                curve: Curves.easeOutCubic,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Icons.info_outline, size: 16, color: lineColor),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    'Passe o mouse ou toque nos pontos para ver o saldo acumulado de cada mês.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MonthlySavingsRatePoint {
-  const _MonthlySavingsRatePoint({
-    required this.month,
-    required this.rate,
-    required this.hasIncome,
-  });
-
-  final int month;
-  final double rate;
-  final bool hasIncome;
-
-  String get label => _monthShort(month);
-}
-
-List<_MonthlySavingsRatePoint> _buildMonthlySavingsRateData(
-  List<FinancialTransaction> transactions,
-) {
-  final now = DateTime.now();
-  final points = <_MonthlySavingsRatePoint>[];
-
-  for (var offset = 5; offset >= 0; offset--) {
-    final date = DateTime(now.year, now.month - offset, 1);
-    final items = transactions.where(
-      (item) => item.date.year == date.year && item.date.month == date.month,
-    );
-
-    var income = 0.0;
-    var expenses = 0.0;
-    for (final item in items) {
-      if (item.isIncome) {
-        income += item.amount;
-      } else {
-        expenses += item.amount;
-      }
-    }
-
-    final rate = income <= 0 ? 0.0 : ((income - expenses) / income) * 100;
-
-    points.add(
-      _MonthlySavingsRatePoint(
-        month: date.month,
-        rate: rate,
-        hasIncome: income > 0,
-      ),
-    );
-  }
-
-  return points;
-}
-
-class _MonthlySavingsRateChart extends StatelessWidget {
-  const _MonthlySavingsRateChart({required this.transactions});
-
-  final List<FinancialTransaction> transactions;
-
-  @override
-  Widget build(BuildContext context) {
-    final points = _buildMonthlySavingsRateData(transactions);
-    final rates = points.map((item) => item.rate).toList();
-    final minRate = rates.reduce((a, b) => a < b ? a : b);
-    final maxRate = rates.reduce((a, b) => a > b ? a : b);
-    final minY = minRate < 0 ? minRate - 15 : -10.0;
-    final maxY = maxRate > 100 ? maxRate + 15 : 110.0;
-
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.savings_outlined, color: Color(0xFF16A34A)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Taxa de economia mensal',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Percentual da renda que sobrou após as despesas em cada mês',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 18),
-            SizedBox(
-              height: 245,
-              child: BarChart(
-                BarChartData(
-                  minY: minY,
-                  maxY: maxY,
-                  alignment: BarChartAlignment.spaceAround,
-                  borderData: FlBorderData(show: false),
-                  gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: false,
-                    horizontalInterval: (maxY - minY) / 4,
-                    getDrawingHorizontalLine: (value) => FlLine(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.outlineVariant.withValues(alpha: 0.45),
-                      strokeWidth: 1,
-                    ),
-                  ),
-                  extraLinesData: ExtraLinesData(
-                    horizontalLines: [
-                      HorizontalLine(
-                        y: 0,
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.outline.withValues(alpha: 0.7),
-                        strokeWidth: 1.5,
-                      ),
-                    ],
-                  ),
-                  titlesData: FlTitlesData(
-                    topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    leftTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 32,
-                        getTitlesWidget: (value, meta) {
-                          final index = value.toInt();
-                          if (index < 0 || index >= points.length) {
-                            return const SizedBox.shrink();
-                          }
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Text(
-                              points[index].label,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  barTouchData: BarTouchData(
-                    enabled: true,
-                    touchTooltipData: BarTouchTooltipData(
-                      getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                        final point = points[group.x];
-                        final text = point.hasIncome
-                            ? '${point.label}\nEconomia: ${point.rate.toStringAsFixed(1)}%'
-                            : '${point.label}\nSem receita registrada';
-                        return BarTooltipItem(
-                          text,
-                          const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  barGroups: points.asMap().entries.map((entry) {
-                    final point = entry.value;
-                    final positive = point.rate >= 0;
-                    final color = !point.hasIncome
-                        ? const Color(0xFF94A3B8)
-                        : positive
-                        ? const Color(0xFF16A34A)
-                        : const Color(0xFFDC2626);
-
-                    return BarChartGroupData(
-                      x: entry.key,
-                      barRods: [
-                        BarChartRodData(
-                          toY: point.rate,
-                          width: 22,
-                          color: color,
-                          borderRadius: BorderRadius.vertical(
-                            top: positive
-                                ? const Radius.circular(7)
-                                : Radius.zero,
-                            bottom: positive
-                                ? Radius.zero
-                                : const Radius.circular(7),
-                          ),
-                        ),
-                      ],
-                    );
-                  }).toList(),
-                ),
-                duration: const Duration(milliseconds: 700),
-                curve: Curves.easeOutCubic,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                _SavingsRateLegend(
-                  color: const Color(0xFF16A34A),
-                  label: 'Economia positiva',
-                ),
-                const SizedBox(width: 14),
-                _SavingsRateLegend(
-                  color: const Color(0xFFDC2626),
-                  label: 'Gastos acima da renda',
-                ),
-                const SizedBox(width: 14),
-                _SavingsRateLegend(
-                  color: const Color(0xFF94A3B8),
-                  label: 'Sem receita',
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SavingsRateLegend extends StatelessWidget {
-  const _SavingsRateLegend({required this.color, required this.label});
-
-  final Color color;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Flexible(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(3),
-            ),
-          ),
-          const SizedBox(width: 5),
-          Flexible(
-            child: Text(
-              label,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FinancialDiagnosis {
-  const _FinancialDiagnosis({
-    required this.title,
-    required this.message,
-    required this.icon,
-    required this.commitmentRate,
-    required this.monthMargin,
-    required this.level,
-  });
-
-  final String title;
-  final String message;
-  final IconData icon;
-  final double commitmentRate;
-  final double monthMargin;
-  final _FinancialHealthLevel level;
-}
-
-enum _FinancialHealthLevel { healthy, stable, attention, critical }
-
-_FinancialDiagnosis _buildFinancialDiagnosis({
-  required double monthIncome,
-  required double monthExpenses,
-  required double savingsRate,
-}) {
-  final monthMargin = monthIncome - monthExpenses;
-  final commitmentRate = monthIncome <= 0
-      ? (monthExpenses > 0 ? 100.0 : 0.0)
-      : (monthExpenses / monthIncome) * 100;
-
-  if (monthIncome == 0 && monthExpenses == 0) {
-    return const _FinancialDiagnosis(
-      title: 'Mês começando',
-      message:
-          'Ainda não há movimentações neste mês. Registre receitas e despesas para gerar um diagnóstico.',
-      icon: Icons.insights_outlined,
-      commitmentRate: 0,
-      monthMargin: 0,
-      level: _FinancialHealthLevel.stable,
-    );
-  }
-
-  if (monthIncome <= 0 && monthExpenses > 0) {
-    return _FinancialDiagnosis(
-      title: 'Atenção às receitas',
-      message:
-          'Existem despesas no mês, mas nenhuma receita registrada. Confira se as entradas estão atualizadas.',
-      icon: Icons.warning_amber_rounded,
-      commitmentRate: commitmentRate,
-      monthMargin: monthMargin,
-      level: _FinancialHealthLevel.attention,
-    );
-  }
-
-  if (monthExpenses > monthIncome) {
-    return _FinancialDiagnosis(
-      title: 'Situação crítica',
-      message:
-          'As despesas do mês já ultrapassaram as receitas. Priorize gastos essenciais e revise os limites do orçamento.',
-      icon: Icons.error_outline,
-      commitmentRate: commitmentRate,
-      monthMargin: monthMargin,
-      level: _FinancialHealthLevel.critical,
-    );
-  }
-
-  if (savingsRate >= 20) {
-    return _FinancialDiagnosis(
-      title: 'Saúde financeira boa',
-      message:
-          'Você está preservando pelo menos 20% das receitas do mês. Mantenha o ritmo e direcione parte da sobra para suas metas.',
-      icon: Icons.verified_outlined,
-      commitmentRate: commitmentRate,
-      monthMargin: monthMargin,
-      level: _FinancialHealthLevel.healthy,
-    );
-  }
-
-  if (savingsRate >= 10) {
-    return _FinancialDiagnosis(
-      title: 'Situação estável',
-      message:
-          'O mês está positivo, mas ainda há espaço para aumentar a margem de segurança e acelerar suas metas.',
-      icon: Icons.trending_up,
-      commitmentRate: commitmentRate,
-      monthMargin: monthMargin,
-      level: _FinancialHealthLevel.stable,
-    );
-  }
-
-  return _FinancialDiagnosis(
-    title: 'Atenção ao orçamento',
-    message:
-        'A margem do mês está pequena. Revise as categorias com maior gasto para evitar terminar o mês no negativo.',
-    icon: Icons.monitor_heart_outlined,
-    commitmentRate: commitmentRate,
-    monthMargin: monthMargin,
-    level: _FinancialHealthLevel.attention,
-  );
-}
-
-class _FinancialDiagnosisCard extends StatelessWidget {
-  const _FinancialDiagnosisCard({required this.diagnosis});
-
-  final _FinancialDiagnosis diagnosis;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final accent = switch (diagnosis.level) {
-      _FinancialHealthLevel.healthy => colorScheme.primary,
-      _FinancialHealthLevel.stable => colorScheme.secondary,
-      _FinancialHealthLevel.attention => colorScheme.tertiary,
-      _FinancialHealthLevel.critical => colorScheme.error,
-    };
-
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: accent.withValues(alpha: 0.12),
-                  foregroundColor: accent,
-                  child: Icon(diagnosis.icon),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Diagnóstico financeiro',
-                        style: Theme.of(context).textTheme.labelLarge,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        diagnosis.title,
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              color: accent,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Text(diagnosis.message),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 12,
-              runSpacing: 8,
-              children: [
-                _DiagnosticChip(
-                  icon: Icons.pie_chart_outline,
-                  label:
-                      'Comprometimento: ${diagnosis.commitmentRate.toStringAsFixed(0)}%',
-                ),
-                _DiagnosticChip(
-                  icon: diagnosis.monthMargin >= 0
-                      ? Icons.savings_outlined
-                      : Icons.trending_down,
-                  label: 'Margem: ${_currency(diagnosis.monthMargin)}',
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DiagnosticChip extends StatelessWidget {
-  const _DiagnosticChip({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [Icon(icon, size: 18), const SizedBox(width: 6), Text(label)],
-      ),
-    );
-  }
-}
-
-class _HeroBalanceCard extends StatelessWidget {
-  const _HeroBalanceCard({required this.balance, required this.savingsRate});
-
-  final double balance;
-  final double savingsRate;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      color: Theme.of(context).colorScheme.primaryContainer,
-      child: Padding(
-        padding: const EdgeInsets.all(22),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Saldo total'),
-                  const SizedBox(height: 8),
-                  FittedBox(
-                    child: Text(
-                      _currency(balance),
-                      style: Theme.of(context).textTheme.headlineMedium
-                          ?.copyWith(fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 16),
-            Column(
-              children: [
-                const Text('Economia'),
-                const SizedBox(height: 8),
-                Text(
-                  '${savingsRate.toStringAsFixed(0)}%',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MetricCard extends StatelessWidget {
-  const _MetricCard({
-    required this.title,
-    required this.value,
-    required this.icon,
-  });
-
-  final String title;
-  final String value;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon),
-            const SizedBox(height: 10),
-            Text(title),
-            const SizedBox(height: 4),
-            FittedBox(
-              child: Text(
-                value,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CategoryBars extends StatelessWidget {
-  const _CategoryBars({required this.transactions});
-
-  final List<FinancialTransaction> transactions;
-
-  @override
-  Widget build(BuildContext context) {
-    final totals = <String, double>{};
-    for (final item in transactions.where((item) => !item.isIncome)) {
-      totals[item.category] = (totals[item.category] ?? 0) + item.amount;
-    }
-
-    if (totals.isEmpty) {
-      return const _EmptyState(
-        icon: Icons.bar_chart_outlined,
-        title: 'Sem despesas neste mês',
-        message: 'Os gastos por categoria aparecerão aqui.',
-      );
-    }
-
-    final sorted = totals.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    final maxValue = sorted.first.value;
-
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          children: sorted.take(5).map((entry) {
-            final ratio = maxValue <= 0 ? 0.0 : entry.value / maxValue;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 14),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(child: Text(entry.key)),
-                      Text(
-                        _currency(entry.value),
-                        style: const TextStyle(
-                          color: Color(0xFFDC2626), // expense-category-value
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  LinearProgressIndicator(value: ratio),
-                ],
-              ),
-            );
-          }).toList(),
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({
-    required this.icon,
-    required this.title,
-    required this.message,
-  });
-
-  final IconData icon;
-  final String title;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(22),
-        child: Column(
-          children: [
-            Icon(icon, size: 44),
-            const SizedBox(height: 10),
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 4),
-            Text(message, textAlign: TextAlign.center),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ErrorView extends StatelessWidget {
-  const _ErrorView({required this.message});
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text(
-          'Não foi possível carregar os dados.\n$message',
-          textAlign: TextAlign.center,
-        ),
-      ),
-    );
-  }
-}
-
-double _sumIncome(List<FinancialTransaction> items) => items
-    .where((item) => item.isIncome)
-    .fold(0, (sum, item) => sum + item.amount);
-
-double _sumExpenses(List<FinancialTransaction> items) => items
-    .where((item) => !item.isIncome)
-    .fold(0, (sum, item) => sum + item.amount);
-
-String _currency(double value) {
-  final negative = value < 0;
-  final absolute = value.abs().toStringAsFixed(2);
-  final parts = absolute.split('.');
-  final integer = parts[0];
-  final decimal = parts[1];
-  final buffer = StringBuffer();
-
-  for (var index = 0; index < integer.length; index++) {
-    final remaining = integer.length - index;
-    buffer.write(integer[index]);
-    if (remaining > 1 && remaining % 3 == 1) buffer.write('.');
-  }
-
-  return '${negative ? '-' : ''}R\$ ${buffer.toString()},$decimal';
-}
-
-String _date(DateTime value) =>
-    '${value.day.toString().padLeft(2, '0')}/'
-    '${value.month.toString().padLeft(2, '0')}/${value.year}';
-
-String _monthLabel(DateTime value) {
-  const months = [
-    'Janeiro',
-    'Fevereiro',
-    'Março',
-    'Abril',
-    'Maio',
-    'Junho',
-    'Julho',
-    'Agosto',
-    'Setembro',
-    'Outubro',
-    'Novembro',
-    'Dezembro',
-  ];
-  return '${months[value.month - 1]} ${value.year}';
 }
