@@ -1045,85 +1045,18 @@ class _PlanningTab extends StatelessWidget {
                                         onPressed: goal.progress >= 1
                                             ? null
                                             : () async {
-                                                final controller =
-                                                    TextEditingController();
-
                                                 final contribution = await showDialog<double>(
                                                   context: context,
-                                                  builder: (dialogContext) => AlertDialog(
-                                                    title: const Text(
-                                                      'Adicionar aporte',
-                                                    ),
-                                                    content: TextField(
-                                                      controller: controller,
-                                                      autofocus: true,
-                                                      keyboardType:
-                                                          const TextInputType.numberWithOptions(
-                                                            decimal: true,
-                                                          ),
-                                                      decoration: InputDecoration(
-                                                        labelText:
-                                                            'Valor do aporte',
-                                                        prefixText: 'R\$ ',
-                                                        helperText:
-                                                            'Falta ${_currency((goal.targetAmount - goal.currentAmount).clamp(0.0, double.infinity))}',
-                                                      ),
-                                                    ),
-                                                    actions: [
-                                                      TextButton(
-                                                        onPressed: () =>
-                                                            Navigator.of(
-                                                              dialogContext,
-                                                            ).pop(),
-                                                        child: const Text(
-                                                          'Cancelar',
-                                                        ),
-                                                      ),
-                                                      FilledButton(
-                                                        onPressed: () {
-                                                          final normalized =
-                                                              controller.text
-                                                                  .trim()
-                                                                  .replaceAll(
-                                                                    '.',
-                                                                    '',
-                                                                  )
-                                                                  .replaceAll(
-                                                                    ',',
-                                                                    '.',
-                                                                  );
-                                                          final value =
-                                                              double.tryParse(
-                                                                normalized,
-                                                              );
-
-                                                          if (value == null ||
-                                                              value <= 0) {
-                                                            ScaffoldMessenger.of(
-                                                              dialogContext,
-                                                            ).showSnackBar(
-                                                              const SnackBar(
-                                                                content: Text(
-                                                                  'Informe um valor de aporte maior que zero.',
-                                                                ),
-                                                              ),
-                                                            );
-                                                            return;
-                                                          }
-
-                                                          Navigator.of(
-                                                            dialogContext,
-                                                          ).pop(value);
-                                                        },
-                                                        child: const Text(
-                                                          'Adicionar',
-                                                        ),
-                                                      ),
-                                                    ],
+                                                  builder: (_) => GoalContributionDialog(
+                                                    remainingAmount:
+                                                        (goal.targetAmount -
+                                                                goal.currentAmount)
+                                                            .clamp(
+                                                              0.0,
+                                                              double.infinity,
+                                                            ),
                                                   ),
                                                 );
-
-                                                controller.dispose();
 
                                                 if (contribution == null) {
                                                   return;
@@ -1272,6 +1205,72 @@ class _PlanningTab extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+class GoalContributionDialog extends StatefulWidget {
+  const GoalContributionDialog({
+    required this.remainingAmount,
+    super.key,
+  });
+
+  final double remainingAmount;
+
+  @override
+  State<GoalContributionDialog> createState() =>
+      _GoalContributionDialogState();
+}
+
+class _GoalContributionDialogState extends State<GoalContributionDialog> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final normalized = _controller.text
+        .trim()
+        .replaceAll('.', '')
+        .replaceAll(',', '.');
+    final value = double.tryParse(normalized);
+
+    if (value == null || value <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Informe um valor de aporte maior que zero.'),
+        ),
+      );
+      return;
+    }
+
+    Navigator.of(context).pop(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Adicionar aporte'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: InputDecoration(
+          labelText: 'Valor do aporte',
+          prefixText: 'R\$ ',
+          helperText: 'Falta ${_currency(widget.remainingAmount)}',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('Adicionar')),
+      ],
     );
   }
 }
