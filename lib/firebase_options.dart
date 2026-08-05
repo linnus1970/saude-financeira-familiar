@@ -52,7 +52,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyCZ7hsKFaX9y8oiouEyKNE7N4YA3w7wu9U',
-    appId: '1:469474103344:android:d3b8f54e419726154d1df5',
+    appId: '1:469474103344:android:bd3c74d915a74d604d1df5',
     messagingSenderId: '469474103344',
     projectId: 'saude-financeira-familia-e5ba5',
     storageBucket: 'saude-financeira-familia-e5ba5.firebasestorage.app',
